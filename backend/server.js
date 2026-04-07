@@ -72,7 +72,7 @@ async function seedDemoUser() {
     if (!user) {
       user = await User.create({
         email: demoEmail,
-        name: 'Sayak Mandal',
+        name: 'John Doe',
         password: '123456'
       });
       console.log('🌱 Demo User created');
@@ -82,7 +82,7 @@ async function seedDemoUser() {
     let circle = await FamilyCircle.findOne({ ownerId: user._id });
     if (!circle) {
       circle = await FamilyCircle.create({
-        name: 'The Mandal Family',
+        name: 'The Doe Family',
         ownerId: user._id,
         members: [user._id]
       });
@@ -95,7 +95,7 @@ async function seedDemoUser() {
     const existingMembers = await FamilyMember.find({ familyCircleId: circle._id });
     if (existingMembers.length === 0) {
       const demoProfiles = [
-        { name: 'Sayak', relation: 'Self', age: 22, heartRate: 72, bloodPressure: '120/80', steps: 8500, sleep: '7h' },
+        { name: 'John', relation: 'Self', age: 22, heartRate: 72, bloodPressure: '120/80', steps: 8500, sleep: '7h' },
         { name: 'Vikram', relation: 'Father', age: 52, heartRate: 78, bloodPressure: '135/85', steps: 4200, sleep: '6h' },
         { name: 'Anita', relation: 'Mother', age: 48, heartRate: 74, bloodPressure: '125/80', steps: 5100, sleep: '7.5h' }
       ];
@@ -126,8 +126,8 @@ async function seedDemoUser() {
         }
         await VitalLog.insertMany(logs);
 
-        // 2. Add some sample symptoms for the "Sayak" profile
-        if (profile.name === 'Sayak') {
+        // 2. Add some sample symptoms for the "John" profile
+        if (profile.name === 'John') {
             await SymptomLog.create([
                 {
                     familyMemberId: member._id,

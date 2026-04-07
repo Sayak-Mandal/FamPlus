@@ -10,7 +10,7 @@ export function DashboardMockup() {
         <div className="p-6 border-b border-white/20 bg-white/50">
           <div className="flex justify-between items-center">
             <div className="space-y-1">
-              <h3 className="text-xl font-bold text-slate-800">Hello, Sayak!</h3>
+              <h3 className="text-xl font-bold text-slate-800">Hello, John!</h3>
               <p className="text-xs text-slate-500">Your family's health overview.</p>
             </div>
             <div className="flex gap-2">
