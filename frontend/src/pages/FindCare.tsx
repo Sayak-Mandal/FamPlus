@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card"
 // Keep MapMarker type import if possible, or move it. 
 // Actually, MapMarker is exported from the file. We can import the type safely.
 import { MapMarker } from "@/components/map-component"
-import { MapPin, Search, Stethoscope, Loader2, Phone } from "lucide-react"
+import { MapPin, Search, Stethoscope, Loader2, Phone, Copy } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
@@ -25,8 +25,16 @@ function FindCareContent() {
     const [result, setResult] = useState<{
         analysis: string
         specialty: string
-        doctors: Doctor[]
+        doctors: any[]
     } | null>(null)
+
+    const [copiedId, setCopiedId] = useState<string | null>(null)
+
+    const handleCopy = (text: string, id: string) => {
+        navigator.clipboard.writeText(text)
+        setCopiedId(id)
+        setTimeout(() => setCopiedId(null), 2000)
+    }
 
     const [mapCenter, setMapCenter] = useState<{ lat: number, lng: number }>({ lat: 22.5726, lng: 88.3639 })
     const [mapZoom, setMapZoom] = useState(13)
@@ -91,7 +99,8 @@ function FindCareContent() {
         lat: doc.lat,
         lng: doc.lng,
         title: doc.name,
-        description: `${doc.specialty} • ${doc.hospital} • ⭐ ${doc.rating}`
+        description: `${doc.specialty}${doc.hospital ? ` • ${doc.hospital}` : ''}${doc.rating ? ` • ⭐ ${doc.rating}` : ''}`,
+        address: doc.address
     })) || []
 
     return (
@@ -205,24 +214,62 @@ function FindCareContent() {
                                             </div>
                                         </div>
                                         <p className="text-xs text-primary font-medium">{doctor.specialty}</p>
-                                        <div className="text-xs text-muted-foreground flex flex-col gap-1 mt-1 truncate">
-                                            <span className="flex items-center gap-1">
-                                                <MapPin className="h-3 w-3 shrink-0" />
-                                                {doctor.hospital}
-                                            </span>
-                                            {doctor.phone && (
-                                                <span 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        navigator.clipboard.writeText(doctor.phone || '');
-                                                    }}
-                                                    className="flex items-center gap-1 font-mono tracking-tight bg-muted/40 hover:bg-muted/80 p-1 px-1.5 rounded-md w-fit transition-colors mt-0.5"
-                                                    title="Click to copy phone number"
-                                                >
-                                                    <Phone className="h-3 w-3 shrink-0" />
-                                                    {doctor.phone}
+                                        <div className="text-xs text-muted-foreground flex flex-col gap-1 mt-1">
+                                            {doctor.hospital && (
+                                                <span className="flex items-center gap-1">
+                                                    <MapPin className="h-3 w-3 shrink-0" />
+                                                    {doctor.hospital}
                                                 </span>
                                             )}
+                                            <div className="flex flex-wrap gap-2 mt-1">
+                                                {doctor.phone && (
+                                                    <span 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleCopy(doctor.phone, `phone-${doctor.id || doctor._id}`);
+                                                        }}
+                                                        className="flex items-center gap-1 font-mono tracking-tight bg-muted/40 hover:bg-muted/80 p-1 px-1.5 rounded-md w-fit transition-colors"
+                                                        title="Click to copy phone number"
+                                                    >
+                                                        <Phone className="h-3 w-3 shrink-0" />
+                                                        {copiedId === `phone-${doctor.id || doctor._id}` ? "Copied!" : doctor.phone}
+                                                    </span>
+                                                )}
+                                                {doctor.address && (
+                                                    <div className="flex gap-2 mt-1">
+                                                        <span 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleCopy(doctor.address, `addr-${doctor.id || doctor._id}`);
+                                                            }}
+                                                            className="flex items-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary p-1 px-1.5 rounded-md w-fit transition-colors"
+                                                            title="Click to copy address"
+                                                        >
+                                                            <Copy className="h-3 w-3 shrink-0" />
+                                                            {copiedId === `addr-${doctor.id || doctor._id}` ? "Address Copied!" : "Copy Address"}
+                                                        </span>
+                                                        <span 
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const id = `nav-${doctor.id || doctor._id}`;
+                                                                setCopiedId(id);
+                                                                setTimeout(() => {
+                                                                    setCopiedId(null);
+                                                                    const dest = doctor.address
+                                                                        ? encodeURIComponent(doctor.address)
+                                                                        : `${doctor.lat},${doctor.lng}`;
+                                                                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}`, '_blank');
+                                                                }, 1000);
+                                                            }}
+                                                            className="flex items-center gap-1 bg-green-500/10 hover:bg-green-500/20 text-green-600 p-1 px-1.5 rounded-md w-fit transition-colors font-medium border border-green-500/20"
+                                                            title="Navigate with Google Maps"
+                                                        >
+                                                            <MapPin className="h-3 w-3 shrink-0" />
+                                                            {copiedId === `nav-${doctor.id || doctor._id}` ? "Opening Google Maps..." : "Get Directions"}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

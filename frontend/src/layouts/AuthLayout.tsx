@@ -1,4 +1,5 @@
 import { Link, Outlet } from "react-router-dom";
+import { Activity } from "lucide-react";
 
 export default function AuthLayout() {
     return (
@@ -7,18 +8,7 @@ export default function AuthLayout() {
             <div className="w-full md:w-1/2 lg:w-[45%] flex flex-col justify-center px-8 md:px-16 lg:px-24 relative z-10 bg-background/95 backdrop-blur-sm">
                 <div className="mb-8 md:absolute md:top-8 md:left-12 flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-white shadow-md">
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-5 w-5"
-                        >
-                            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-                        </svg>
+                        <Activity className="h-5 w-5" />
                     </div>
                     <span className="text-xl font-bold tracking-tight text-foreground">FamPlus</span>
                 </div>

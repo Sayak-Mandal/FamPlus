@@ -40,8 +40,8 @@ export function DashboardStatsGrid({ initialMember, vitalsHistory }: DashboardSt
     // BUT the user specifically asked for "left tab if sleep, steps are edited must also be linked to the right side".
     // Steps and Sleep are on the FamilyMember model. Weight/Height are usually logs.
 
-    const currentWeight = vitalsHistory.length > 0 ? vitalsHistory[vitalsHistory.length - 1].weight : 0
-    const currentHeight = vitalsHistory.length > 0 ? vitalsHistory[vitalsHistory.length - 1].height : 0
+    const currentWeight = vitalsHistory.length > 0 ? vitalsHistory[0].weight : 0
+    const currentHeight = vitalsHistory.length > 0 ? vitalsHistory[0].height : 0
 
     // If the dialog allows editing weight/height, we might want to override these if 'member' has them 
     // (though our schema separates them). 
@@ -64,7 +64,7 @@ export function DashboardStatsGrid({ initialMember, vitalsHistory }: DashboardSt
                         <div className="absolute top-0 right-0 p-10 opacity-10">
                             <Activity className="w-40 h-40 text-primary" />
                         </div>
-                        <div className="absolute top-4 right-4 z-20">
+                        <div className="absolute top-2 right-4 z-20">
                             <div className="h-11 w-11 flex items-center justify-center"> {/* 44x44px Touch Target Wrapper */}
                                 <EditFamilyMemberDialog member={member} onUpdate={handleUpdate} />
                             </div>

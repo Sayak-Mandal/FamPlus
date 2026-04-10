@@ -78,8 +78,12 @@ export function ManageCircleDialog() {
               {circle?.members?.map((member: any) => (
                 <div key={member._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                        {member.name?.[0].toUpperCase() || "U"}
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold overflow-hidden border border-slate-200">
+                      {member.avatar ? (
+                        <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-sm">{member.name?.[0].toUpperCase() || "U"}</span>
+                      )}
                     </div>
                     <div>
                         <p className="text-sm font-medium leading-none">{member.name}</p>

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
-import { MapPin } from "lucide-react"
+import { MapPin, Copy, Check } from "lucide-react"
 
 // Fix for default marker icon not showing up in React Leaflet
 // @ts-ignore
@@ -31,6 +31,7 @@ export interface MapMarker {
     lng: number
     title: string
     description?: string
+    address?: string
 }
 
 interface MapComponentProps {
@@ -51,12 +52,18 @@ function MapController({ center, zoom }: { center: { lat: number; lng: number },
 }
 
 export function MapComponent({ markers = [], center = defaultCenter, zoom = 13 }: MapComponentProps) {
-    // Leaflet needs to run only on client side
     const [isMounted, setIsMounted] = useState(false)
+    const [copiedAddress, setCopiedAddress] = useState<string | null>(null)
 
     useEffect(() => {
         setIsMounted(true)
     }, [])
+
+    const handleCopy = (address: string, id: string) => {
+        navigator.clipboard.writeText(address)
+        setCopiedAddress(id)
+        setTimeout(() => setCopiedAddress(null), 2000)
+    }
 
     if (!isMounted) {
         return (
@@ -68,31 +75,80 @@ export function MapComponent({ markers = [], center = defaultCenter, zoom = 13 }
 
     return (
         <MapContainer
+            // @ts-ignore
             center={[center.lat, center.lng]}
+            // @ts-ignore
             zoom={zoom}
             style={containerStyle}
+            // @ts-ignore
             scrollWheelZoom={false}
         >
             <TileLayer
+                // @ts-ignore
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
             <MapController center={center} zoom={zoom} />
 
-            {/* User Location (Static for now) */}
-            <Marker position={[defaultCenter.lat, defaultCenter.lng]}>
-                <Popup>
-                    You are here (Kolkata)
-                </Popup>
-            </Marker>
-
             {/* Dynamic Markers */}
             {markers.map((marker, index) => (
                 <Marker key={index} position={[marker.lat, marker.lng]}>
-                    <Popup>
-                        <strong>{marker.title}</strong>
-                        {marker.description && <><br />{marker.description}</>}
+                    <Popup 
+                        // @ts-ignore
+                        className="doctor-popup"
+                    >
+                        <div className="flex flex-col gap-2 min-w-[200px] p-1">
+                            <div>
+                                <h4 className="font-bold text-base text-primary m-0">{marker.title}</h4>
+                                {marker.description && (
+                                    <p className="text-xs text-muted-foreground mt-1 mb-0 leading-tight">
+                                        {marker.description}
+                                    </p>
+                                )}
+                            </div>
+                            
+                            {marker.address && (
+                                <div className="mt-2 pt-2 border-t border-border flex flex-col gap-1.5">
+                                    <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Address</span>
+                                    <div className="flex items-start justify-between gap-2 bg-muted/50 p-2 rounded-lg group">
+                                        <p className="text-xs font-medium text-foreground leading-normal m-0 flex-1">
+                                            {marker.address}
+                                        </p>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                handleCopy(marker.address!, `marker-${index}`)
+                                            }}
+                                            className="shrink-0 p-1.5 hover:bg-background rounded-md transition-all text-muted-foreground hover:text-primary border border-transparent hover:border-border"
+                                            title="Copy address"
+                                        >
+                                            {copiedAddress === `marker-${index}` ? (
+                                                <Check className="h-3.5 w-3.5 text-green-500" />
+                                            ) : (
+                                                <Copy className="h-3.5 w-3.5" />
+                                            )}
+                                        </button>
+                                    </div>
+                                    {copiedAddress === `marker-${index}` && (
+                                        <span className="text-[10px] text-green-500 font-medium animate-in fade-in slide-in-from-top-1">
+                                            Address copied to clipboard!
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Get Directions Button */}
+                            <button
+                                onClick={() => {
+                                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${marker.lat},${marker.lng}`, '_blank')
+                                }}
+                                className="mt-1 w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary py-2 rounded-lg text-xs font-semibold transition-colors"
+                            >
+                                <MapPin className="h-3 w-3" />
+                                Get Directions
+                            </button>
+                        </div>
                     </Popup>
                 </Marker>
             ))}

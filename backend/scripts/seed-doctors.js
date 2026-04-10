@@ -25,7 +25,7 @@ const MONGODB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb
  */
 const doctorsData = [
     { id: "1", name: "Dr. Anirban Roy", specialty: "Cardiologist", hospital: "Apollo Gleneagles Hospital", lat: 22.5735, lng: 88.3992, rating: 4.8 },
-    { id: "2", name: "Dr. Sutanu Ghosh", specialty: "Cardiologist", hospital: "BM Birla Heart Research Centre", lat: 22.5354, lng: 88.3283, rating: 4.7 },
+    { id: "2", name: "Dr. Sutanu Ghosh", specialty: "Cardiologist", hospital: "BM Birla Heart Research Centre", lat: 22.5328893, lng: 88.3282827, rating: 4.7 },
     { id: "14", name: "Dr. P.K. Deb", specialty: "Cardiologist", hospital: "Calcutta Medical Research Institute", lat: 22.5393, lng: 88.3275, rating: 4.9 },
     { id: "3", name: "Dr. Rina Das", specialty: "Dermatologist", hospital: "Skin Care Clinic", lat: 22.5626, lng: 88.3539, rating: 4.5 },
     { id: "4", name: "Dr. Samir Sen", specialty: "Dermatologist", hospital: "Fortis Hospital", lat: 22.5186, lng: 88.3995, rating: 4.6 },

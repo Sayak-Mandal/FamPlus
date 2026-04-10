@@ -26,7 +26,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="bg-primary p-2 rounded-xl">
-              <Heart className="w-5 h-5 text-white" />
+              <Activity className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-black tracking-tight text-slate-900">Famplus</span>
           </div>
@@ -52,12 +52,7 @@ export default function LandingPage() {
             initial="initial"
             animate="animate"
           >
-            <motion.div variants={fadeInUp}>
-                <Badge className="bg-primary/10 text-primary hover:bg-primary/10 border-none px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest gap-2">
-                    <Sparkles className="w-3 h-3" />
-                    Hackathon Innovation Award Winner
-                </Badge>
-            </motion.div>
+
             
             <motion.h1 
               variants={fadeInUp}
@@ -81,7 +76,12 @@ export default function LandingPage() {
               </Link>
               <div className="flex -space-x-3 items-center ml-4">
                   {[1,2,3,4].map(i => (
-                    <div key={i} className={`w-10 h-10 rounded-full border-4 border-white bg-slate-200`} />
+                    <img 
+                      key={i} 
+                      src={`/landing/p${i}.png`} 
+                      alt={`User ${i}`}
+                      className="w-10 h-10 rounded-full border-4 border-white object-cover" 
+                    />
                   ))}
                   <p className="pl-6 text-sm text-slate-400 font-medium italic underline decoration-slate-200">Used by 500+ households</p>
               </div>
@@ -109,7 +109,7 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-8">
             <FeatureCard 
-              icon={<Sparkles className="w-6 h-6 text-primary" />}
+              icon={<Sparkles className="w-6 h-6 text-white" />}
               title="AI Symptom Engine"
               desc="Our Bernoulli Naive Bayes model detects red-flag conditions like Angina with high precision."
               highlight={true}

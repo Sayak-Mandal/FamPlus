@@ -2,13 +2,14 @@ import * as React from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, User, Lock } from "lucide-react"
+import { Loader2, User, Lock, Eye, EyeOff } from "lucide-react"
 import { login } from "@/app/actions/user"
 
 export default function LoginPage() {
     const navigate = useNavigate()
     const [isLoading, setIsLoading] = React.useState(false)
     const [error, setError] = React.useState<string | null>(null)
+    const [showPassword, setShowPassword] = React.useState(false)
 
     async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault()
@@ -49,7 +50,7 @@ export default function LoginPage() {
                         autoCorrect="off"
                         required
                         disabled={isLoading}
-                        className="h-12 pl-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary text-sm font-medium tracking-wide uppercase placeholder:normal-case placeholder:text-gray-400"
+                        className="h-12 pl-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary text-sm font-medium tracking-wide placeholder:text-gray-400"
                     />
                 </div>
 
@@ -62,12 +63,24 @@ export default function LoginPage() {
                         id="password"
                         name="password"
                         placeholder="Password"
-                        type="password"
+                        type={showPassword ? "text" : "password"}
                         autoCapitalize="none"
                         autoComplete="current-password"
                         disabled={isLoading}
-                        className="h-12 pl-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary"
+                        className="h-12 pl-12 pr-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary"
                     />
+                    <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-primary transition-colors"
+                        disabled={isLoading}
+                    >
+                        {showPassword ? (
+                            <EyeOff className="h-5 w-5" />
+                        ) : (
+                            <Eye className="h-5 w-5" />
+                        )}
+                    </button>
                 </div>
 
                 {error && (

@@ -91,6 +91,10 @@ COMMON_DISEASES: list[str] = [
     'Common Cold', 'Common Flu', 'Allergy', 'Fever', 'Gastroenteritis',
     'Migraine', 'Acne', 'Urinary tract infection', 'Fungal infection',
     'Insomnia', 'Slight Headache', 'Stomach ache', 'Drug Reaction', 'GERD',
+    '(vertigo) Paroymsal  Positional Vertigo', 'Hypoglycemia',
+    'Cervical spondylosis', 'Arthritis', 'Osteoarthristis',
+    'Hypothyroidism', 'Bronchial Asthma', 'Peptic ulcer diseae',
+    'Dimorphic hemmorhoids(piles)', 'Psoriasis', 'Varicose veins',
 ]
 
 # Boost multiplier for common diseases (gentle — just enough to prefer them
@@ -100,6 +104,27 @@ COMMON_BOOST_MULTIPLIER = 1.25
 # When the top-1 confidence falls below this threshold, the UI messaging
 # switches from "You likely have X" to a softer "Possible X" framing.
 LOW_CONFIDENCE_THRESHOLD = 0.55    # 55%
+
+# ── Symptom Count Confidence Control ──────────────────────────────────────────
+# When the user provides very few symptoms, the model can't be confident.
+# These caps prevent misleading high-confidence diagnoses from vague inputs.
+SINGLE_SYMPTOM_MAX_CONFIDENCE = 0.40   # 40% max with only 1 symptom recognized
+FEW_SYMPTOMS_MAX_CONFIDENCE   = 0.60   # 60% max with only 2 symptoms recognized
+
+# Extra boost for common diseases when sparse inputs are detected
+SPARSE_INPUT_COMMON_BOOST = 1.8
+
+# Symptoms that are extremely vague / shared across many conditions
+# and should trigger extra conservative logic when they appear alone.
+HIGHLY_AMBIGUOUS_SYMPTOMS: set = {
+    'dizziness', 'headache', 'fatigue', 'nausea', 'vomiting',
+    'stomach_pain', 'cough', 'itching', 'sweating', 'chills',
+    'muscle_pain', 'joint_pain', 'back_pain', 'anxiety',
+    'high_fever', 'mild_fever', 'lethargy', 'weakness_in_limbs',
+    'loss_of_appetite', 'constipation', 'diarrhoea', 'acidity',
+    'chest_pain', 'breathlessness', 'skin_rash', 'indigestion',
+    'palpitations', 'weight_loss', 'weight_gain', 'insomnia',
+}
 
 # The fallback condition shown when confidence is too low to commit to a diagnosis
 FALLBACK_CONDITION  = "Unspecific Symptoms"
@@ -125,8 +150,23 @@ class WellnessResponse(BaseModel):
     recommendation: str
     anomalies:      List[str]
 
+class VitalsContext(BaseModel):
+    """Optional real-time vitals from the user's dashboard.
+
+    These are pulled from the selected family member's profile and
+    used as contextual evidence to improve diagnostic accuracy.
+    All fields are optional — the system gracefully degrades to
+    symptom-only mode if vitals are absent or stale.
+    """
+    heart_rate:       Optional[int]   = None   # bpm
+    blood_pressure:   Optional[str]   = None   # "120/80" format
+    sleep:            Optional[str]   = None   # "7h" or "7h 30m" format
+    age:              Optional[int]   = None
+    data_age_minutes: Optional[int]   = None   # how old the vitals data is
+
 class SymptomRequest(BaseModel):
-    symptoms: str
+    symptoms:        str
+    vitals_context:  Optional[VitalsContext] = None
 
 class TopMatch(BaseModel):
     condition:  str
@@ -142,6 +182,7 @@ class SymptomResponse(BaseModel):
     urgency:      str           = "Normal"
     top_matches:  List[TopMatch] = []
     next_steps:   List[str]     = []
+    vitals_analysis: List[str]  = []    # Explains how vitals influenced diagnosis
     disclaimer:   str           = (
         "DISCLAIMER: This is an AI-powered health guide, not a medical diagnosis. "
         "Please consult a qualified doctor for any health concerns."
@@ -495,7 +536,7 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'leg swelling':           'swollen_legs',
     'painful walking':        'painful_walking',
     'pain walking':           'painful_walking',
-    'leg pain':               'pain_behind_the_eyes',  # use general pain mapping
+    'leg pain':               'painful_walking',
 
     # ── Cardiovascular ────────────────────────────────────────────────────────
     'heart racing':           'fast_heart_rate',
@@ -543,8 +584,12 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'irritability':           'irritability',
     'restless':               'restlessness',
     'restlessness':           'restlessness',
-    'can t sleep':            'fatigue',
-    'insomnia':               'fatigue',
+    'can t sleep':            'insomnia',
+    'cant sleep':             'insomnia',
+    'not sleeping':           'insomnia',
+    'unable to sleep':        'insomnia',
+    'difficulty sleeping':    'insomnia',
+    'insomnia':               'insomnia',
     'sleeping too much':      'lethargy',
 
     # ── Weight / Metabolism ──────────────────────────────────────────────────
@@ -587,8 +632,100 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'excessive thirst':       'dehydration',
     'history alcohol':        'history_of_alcohol_consumption',
     'alcohol':                'history_of_alcohol_consumption',
-    'fragile nails':          'fragile_nails',
-    'brittle nails':          'fragile_nails',
+    'fragile nails':          'brittle_nails',
+    'brittle nails':          'brittle_nails',
+
+    # ── Natural Language Expansion (v2) ───────────────────────────────────
+    # Additional conversational aliases for broader symptom recognition
+    'giddy':                  'dizziness',
+    'woozy':                  'dizziness',
+    'shaky':                  'dizziness',
+    'off balance':            'loss_of_balance',
+    'out of balance':         'loss_of_balance',
+    'unbalanced':             'loss_of_balance',
+    'wobbly':                 'unsteadiness',
+    'heavy head':             'headache',
+    'head feels heavy':       'headache',
+    'head heavy':             'headache',
+    'brain fog':              'lack_of_concentration',
+    'foggy':                  'lack_of_concentration',
+    'can t focus':            'lack_of_concentration',
+    'cannot focus':           'lack_of_concentration',
+    'drained':                'fatigue',
+    'run down':               'fatigue',
+    'worn out':               'fatigue',
+    'low energy':             'fatigue',
+    'tummy ache':             'stomach_pain',
+    'tummy pain':             'stomach_pain',
+    'tummy hurts':            'stomach_pain',
+    'belly hurts':            'belly_pain',
+    'feeling sick':           'nausea',
+    'feel sick':              'nausea',
+    'throat hurts':           'throat_irritation',
+    'throat sore':            'throat_irritation',
+    'gastric':                'acidity',
+    'gastric problem':        'acidity',
+    'gas problem':            'passage_of_gases',
+    'gas trouble':            'passage_of_gases',
+    'pee burns':              'burning_micturition',
+    'urine burns':            'burning_micturition',
+    'burns when peeing':      'burning_micturition',
+    'skin irritation':        'itching',
+    'skin bumps':             'nodal_skin_eruptions',
+    'bumps on skin':          'nodal_skin_eruptions',
+    'spotty':                 'pus_filled_pimples',
+    'pimple':                 'pus_filled_pimples',
+    'spots on face':          'pus_filled_pimples',
+    'eye strain':             'pain_behind_the_eyes',
+    'eyes hurt':              'pain_behind_the_eyes',
+    'sleepless':              'insomnia',
+    'cannot sleep':           'insomnia',
+    'sleep problems':         'insomnia',
+    'trouble sleeping':       'insomnia',
+    'no sleep':               'insomnia',
+    'spasms':                 'cramps',
+    'muscle spasms':          'cramps',
+    'swollen ankles':         'swollen_legs',
+    'ankle swelling':         'swollen_legs',
+    'dry mouth':              'dehydration',
+    'parched':                'dehydration',
+    'shaking':                'shivering',
+    'trembling':              'shivering',
+    'burning eyes':           'redness_of_eyes',
+    'eye redness':            'redness_of_eyes',
+    'sniffling':              'runny_nose',
+    'sinus headache':         'sinus_pressure',
+    'blocked sinuses':        'sinus_pressure',
+    'swollen face':           'puffy_face_and_eyes',
+    'face swollen':           'puffy_face_and_eyes',
+    'face puffiness':         'puffy_face_and_eyes',
+    'irregular periods':      'abnormal_menstruation',
+    'period problems':        'abnormal_menstruation',
+    'chest discomfort':       'chest_pain',
+    'chest burning':          'acidity',
+    'stomach burning':        'acidity',
+    'body weakness':          'weakness_in_limbs',
+    'feel weak':              'weakness_in_limbs',
+    'low sugar':              'irregular_sugar_level',
+    'high sugar':             'irregular_sugar_level',
+    'sugar low':              'irregular_sugar_level',
+    'sugar high':             'irregular_sugar_level',
+    'flaky skin':             'skin_peeling',
+    'dry skin':               'skin_peeling',
+    'nail problems':          'brittle_nails',
+    'cracking nails':         'brittle_nails',
+    'stomach cramps':         'cramps',
+    'belly cramps':           'cramps',
+    'food poisoning':         'vomiting',
+    'motion sickness':        'nausea',
+    'car sick':               'nausea',
+    'rapid heartbeat':        'fast_heart_rate',
+    'heart fluttering':       'palpitations',
+    'heart flutter':          'palpitations',
+    'skipped heartbeat':      'palpitations',
+    'irregular heart':        'palpitations',
+    'swollen glands':         'swelled_lymph_nodes',
+    'lymph nodes':            'swelled_lymph_nodes',
 }
 
 
@@ -730,6 +867,210 @@ def apply_conservative_adjustments(
     return adjusted
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  Vitals-Aware Context Engine
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Maximum data age (in minutes) before vitals are considered stale
+VITALS_FRESHNESS_LIMIT = 180    # 3 hours
+
+def apply_vitals_context(
+    vitals: Optional[VitalsContext],
+    adjusted_probs: np.ndarray,
+    valid_features: list[str],
+    all_symptoms: list[str],
+    X_input: np.ndarray,
+    le,
+) -> tuple[np.ndarray, list[str], list[str], int]:
+    """Analyzes dashboard vitals and adjusts diagnostic probabilities.
+
+    This function acts as a clinical overlay — it uses real-time patient
+    vitals (heart rate, blood pressure, sleep, age) to bias the model
+    toward conditions supported by objective measurements, not just
+    subjective symptom descriptions.
+
+    Safety Design:
+    - If vitals are None, stale (> 3h), or missing key fields → no-op.
+    - Vitals BOOST relevant conditions but never suppress symptoms.
+    - In emergencies, the user can skip vitals entirely.
+
+    Args:
+        vitals: Optional vitals context from the user's dashboard.
+        adjusted_probs: The probability array after conservative adjustments.
+        valid_features: List of symptoms recognized in the user's input.
+        all_symptoms: The full symptom vocabulary.
+        X_input: The binary feature vector for the model.
+        le: The LabelEncoder mapping indices to disease names.
+
+    Returns:
+        Tuple of (modified_probs, updated_features, vitals_analysis, extra_evidence_count)
+    """
+    vitals_analysis: list[str] = []
+    injected_symptoms: list[str] = []
+    extra_evidence = 0
+
+    # ── Guard: No vitals or stale data → pass through unchanged ───────────
+    if vitals is None:
+        return adjusted_probs, valid_features, vitals_analysis, 0
+
+    if vitals.data_age_minutes is not None and vitals.data_age_minutes > VITALS_FRESHNESS_LIMIT:
+        vitals_analysis.append(
+            f"⏱ Vitals data is {vitals.data_age_minutes} min old (>{VITALS_FRESHNESS_LIMIT} min limit) — "
+            f"using symptom-only analysis for accuracy."
+        )
+        print(f"DEBUG [VITALS]: Stale data ({vitals.data_age_minutes}m > {VITALS_FRESHNESS_LIMIT}m), skipping.")
+        return adjusted_probs, valid_features, vitals_analysis, 0
+
+    probs = adjusted_probs.copy()
+    updated_features = valid_features.copy()
+
+    # ── Heart Rate Analysis ───────────────────────────────────────────────
+    if vitals.heart_rate is not None and vitals.heart_rate > 0:
+        hr = vitals.heart_rate
+
+        if hr > 100:
+            # Tachycardia — boost cardiac and stress-related conditions
+            vitals_analysis.append(
+                f"❤️ Heart rate of {hr} bpm is elevated (tachycardia, normal range: 60–100 bpm). "
+                f"This supports cardiovascular and stress-related conditions."
+            )
+            # Inject fast_heart_rate as a derived symptom
+            if 'fast_heart_rate' in all_symptoms and 'fast_heart_rate' not in updated_features:
+                injected_symptoms.append('fast_heart_rate')
+                extra_evidence += 1
+
+            # Boost cardiac diseases
+            cardiac_boost = 2.5 if hr > 120 else 1.8
+            for i, disease in enumerate(le.classes_):
+                if disease in ('Heart attack', 'Hypertension', 'Hyperthyroidism'):
+                    probs[i] *= cardiac_boost
+
+        elif hr < 50:
+            # Bradycardia — boost cardiac and metabolic conditions
+            vitals_analysis.append(
+                f"❤️ Heart rate of {hr} bpm is low (bradycardia, normal range: 60–100 bpm). "
+                f"This may indicate cardiac or metabolic issues."
+            )
+            if 'fast_heart_rate' in all_symptoms and 'fast_heart_rate' not in updated_features:
+                injected_symptoms.append('fast_heart_rate')
+                extra_evidence += 1
+
+            for i, disease in enumerate(le.classes_):
+                if disease in ('Heart attack', 'Hypothyroidism', 'Hypoglycemia'):
+                    probs[i] *= 2.0
+
+        elif hr > 90:
+            # Mildly elevated — gentle boost
+            vitals_analysis.append(
+                f"❤️ Heart rate of {hr} bpm is mildly elevated (normal resting: 60–80 bpm)."
+            )
+            for i, disease in enumerate(le.classes_):
+                if disease in ('Hypertension', 'Hyperthyroidism'):
+                    probs[i] *= 1.3
+
+        else:
+            vitals_analysis.append(f"❤️ Heart rate of {hr} bpm is within normal range.")
+
+    # ── Blood Pressure Analysis ───────────────────────────────────────────
+    if vitals.blood_pressure:
+        try:
+            sys_val, dia_val = parse_bp(vitals.blood_pressure)
+
+            if sys_val > 140 or dia_val > 90:
+                vitals_analysis.append(
+                    f"🩸 Blood pressure {vitals.blood_pressure} mmHg is elevated "
+                    f"(hypertensive range, normal: <120/80)."
+                )
+                for i, disease in enumerate(le.classes_):
+                    if disease == 'Hypertension':
+                        probs[i] *= 3.0
+                    elif disease in ('Heart attack', 'Paralysis (brain hemorrhage)'):
+                        probs[i] *= 1.5
+                extra_evidence += 1
+
+            elif sys_val < 90 or dia_val < 60:
+                vitals_analysis.append(
+                    f"🩸 Blood pressure {vitals.blood_pressure} mmHg is low "
+                    f"(hypotensive range, normal: >90/60)."
+                )
+                for i, disease in enumerate(le.classes_):
+                    if disease in ('Hypoglycemia', 'Hyperthyroidism'):
+                        probs[i] *= 2.5
+                extra_evidence += 1
+
+            else:
+                vitals_analysis.append(
+                    f"🩸 Blood pressure {vitals.blood_pressure} mmHg is within normal range."
+                )
+        except Exception:
+            pass  # Malformed BP string — silently skip
+
+    # ── Sleep Analysis ────────────────────────────────────────────────────
+    if vitals.sleep:
+        sleep_hours = parse_sleep(vitals.sleep)
+        if sleep_hours > 0:
+            if sleep_hours < 4:
+                vitals_analysis.append(
+                    f"😴 Sleep of {vitals.sleep} is severely insufficient (<4h). "
+                    f"This supports fatigue-related and neurological conditions."
+                )
+                for i, disease in enumerate(le.classes_):
+                    if disease in ('Insomnia', 'Migraine', 'Slight Headache', 'Hypertension'):
+                        probs[i] *= 2.0
+                extra_evidence += 1
+
+            elif sleep_hours < 6:
+                vitals_analysis.append(
+                    f"😴 Sleep of {vitals.sleep} is below recommended (6–8h)."
+                )
+                for i, disease in enumerate(le.classes_):
+                    if disease in ('Insomnia', 'Migraine'):
+                        probs[i] *= 1.5
+                extra_evidence += 1
+
+    # ── Age-Based Risk Modulation ─────────────────────────────────────────
+    if vitals.age is not None and vitals.age > 0:
+        # Cardiac symptoms in elderly (>50) should lower the gate for scary diseases
+        cardiac_symptoms_present = any(
+            s in updated_features
+            for s in ('chest_pain', 'crushing_chest_pain', 'breathlessness',
+                      'sweating', 'fast_heart_rate', 'left_arm_pain')
+        )
+        if vitals.age >= 50 and cardiac_symptoms_present:
+            vitals_analysis.append(
+                f"👤 Patient age {vitals.age} with cardiac symptoms — elevated risk profile."
+            )
+            for i, disease in enumerate(le.classes_):
+                if disease in ('Heart attack', 'Hypertension', 'Paralysis (brain hemorrhage)'):
+                    probs[i] *= 1.8
+            extra_evidence += 1
+
+        elif vitals.age >= 60:
+            # General age-related risk boost for degenerative conditions
+            for i, disease in enumerate(le.classes_):
+                if disease in ('Osteoarthristis', 'Cervical spondylosis', 'Arthritis',
+                               'Hypertension', 'Varicose veins'):
+                    probs[i] *= 1.3
+
+    # ── Inject derived symptoms into feature vector ───────────────────────
+    for symptom in injected_symptoms:
+        if symptom in all_symptoms:
+            idx = all_symptoms.index(symptom)
+            X_input[idx] = 1.0
+            updated_features.append(symptom)
+
+    # ── Renormalize probabilities ─────────────────────────────────────────
+    total = np.sum(probs)
+    if total > 0:
+        probs = probs / total
+
+    freshness_label = f"{vitals.data_age_minutes}m ago" if vitals.data_age_minutes else "live"
+    print(f"DEBUG [VITALS]: Applied context (freshness={freshness_label}, "
+          f"injected={injected_symptoms}, extra_evidence={extra_evidence})")
+
+    return probs, updated_features, vitals_analysis, extra_evidence
+
+
 def get_fallback_response(reason: str) -> SymptomResponse:
     """Generates a safe default response when diagnosis is ambiguous.
 
@@ -846,6 +1187,36 @@ def predict_symptoms(data: SymptomRequest):
     # ── Step 5: Apply Conservative Adjustments ────────────────────────────────
     adjusted_probs = apply_conservative_adjustments(raw_probabilities, valid_features, le)
 
+    # ── Step 5a: Vitals Context Integration ───────────────────────────────────
+    # If the frontend sent dashboard vitals, use them to bias probabilities
+    # toward conditions supported by objective measurements.
+    vitals_analysis: list[str] = []
+    vitals_evidence = 0
+    if data.vitals_context is not None:
+        adjusted_probs, valid_features, vitals_analysis, vitals_evidence = apply_vitals_context(
+            vitals   = data.vitals_context,
+            adjusted_probs = adjusted_probs,
+            valid_features = valid_features,
+            all_symptoms   = metadata['all_symptoms'],
+            X_input        = X_input,
+            le             = le,
+        )
+
+    # ── Step 5b: Sparse Input Adjustments ─────────────────────────────────────
+    # When few symptoms are provided, boost common diseases and penalize
+    # scary diseases more aggressively to avoid alarming false positives.
+    # Vitals-derived evidence counts toward the symptom count.
+    n_symptoms = len(valid_features) + vitals_evidence
+    if n_symptoms <= 2:
+        for i, disease in enumerate(le.classes_):
+            if disease in COMMON_DISEASES:
+                adjusted_probs[i] *= SPARSE_INPUT_COMMON_BOOST
+            if disease in SCARY_DISEASES:
+                adjusted_probs[i] *= (0.01 if n_symptoms == 1 else 0.05)
+        total = np.sum(adjusted_probs)
+        if total > 0:
+            adjusted_probs = adjusted_probs / total
+
     # ── Step 6: Get Top 3 Predictions ─────────────────────────────────────────
     top_indices = np.argsort(adjusted_probs)[::-1][:3]
     top_matches = [
@@ -860,6 +1231,15 @@ def predict_symptoms(data: SymptomRequest):
     primary_disease    = top_matches[0].condition
     primary_confidence = adjusted_probs[top_indices[0]]  # float 0.0–1.0
     confidence_pct     = int(primary_confidence * 100)
+
+    # ── Step 7b: Symptom Count Confidence Cap ─────────────────────────────────
+    # Hard-cap confidence when only 1-2 symptoms are provided
+    if n_symptoms == 1:
+        primary_confidence = min(primary_confidence, SINGLE_SYMPTOM_MAX_CONFIDENCE)
+        confidence_pct = min(confidence_pct, int(SINGLE_SYMPTOM_MAX_CONFIDENCE * 100))
+    elif n_symptoms == 2:
+        primary_confidence = min(primary_confidence, FEW_SYMPTOMS_MAX_CONFIDENCE)
+        confidence_pct = min(confidence_pct, int(FEW_SYMPTOMS_MAX_CONFIDENCE * 100))
 
     # ── Step 8: Scary Disease Final Gate ──────────────────────────────────────
     # Even after adjustment, if confidence is still below the high threshold
@@ -911,6 +1291,17 @@ def predict_symptoms(data: SymptomRequest):
                 f"We suggest visiting a {specialist} or a General Physician to be sure."
             )
 
+    # ── Sparse Input Advisory Override ────────────────────────────────────
+    # When very few symptoms are provided, override advice with a more
+    # cautious message regardless of the predicted disease.
+    if n_symptoms <= 2 and not (is_scary and primary_confidence >= SCARY_CONFIDENCE_THRESHOLD):
+        advice = (
+            f"Based on limited symptoms, this could possibly indicate {final_disease}, "
+            f"but many conditions share these symptoms. "
+            f"Describing additional symptoms would improve diagnostic accuracy. "
+            f"We recommend consulting a {specialist} or General Physician for evaluation."
+        )
+
     # ── Step 9: Metadata Enrichment ───────────────────────────────────────────
     description = metadata['description_map'].get(final_disease, "No description available.")
     precautions = [p.capitalize() for p in metadata['precaution_map'].get(final_disease, [])]
@@ -935,15 +1326,16 @@ def predict_symptoms(data: SymptomRequest):
         ]
 
     return SymptomResponse(
-        condition   = final_disease,
-        confidence  = final_confidence,
-        advice      = advice,
-        specialist  = specialist,
-        description = description,
-        precautions = precautions,
-        urgency     = urgency,
-        top_matches = top_matches,
-        next_steps  = next_steps,
+        condition       = final_disease,
+        confidence      = final_confidence,
+        advice          = advice,
+        specialist      = specialist,
+        description     = description,
+        precautions     = precautions,
+        urgency         = urgency,
+        top_matches     = top_matches,
+        next_steps      = next_steps,
+        vitals_analysis = vitals_analysis,
     )
 
 

@@ -45,7 +45,7 @@ app.use('/api/', limiter);
 const MONGODB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/famplus';
 
 let dbConnected = false;
-mongoose.connect(MONGODB_URI, { 
+mongoose.connect(MONGODB_URI, {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
 })
@@ -67,15 +67,21 @@ async function seedDemoUser() {
   try {
     const demoEmail = 'demo@famplus.com';
     let user = await User.findOne({ email: demoEmail });
-    
+
     // Always ensure the demo user exists
     if (!user) {
       user = await User.create({
         email: demoEmail,
         name: 'John Doe',
+        avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix&backgroundColor=transparent',
         password: '123456'
       });
       console.log('🌱 Demo User created');
+    } else {
+      // Update existing user with the new name and avatar
+      user.name = 'John Doe';
+      user.avatar = 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix&backgroundColor=transparent';
+      await user.save();
     }
 
     // Check if circle exists
@@ -89,67 +95,81 @@ async function seedDemoUser() {
       user.familyCircleId = circle._id;
       await user.save();
       console.log('🌱 Demo Circle created');
+    } else {
+      // Update the name if it's the old Mandal family
+      if (circle.name === 'The Mandal Family') {
+        circle.name = 'The Doe Family';
+        await circle.save();
+      }
     }
 
-    // Check if members exist, if not, seed them with history
-    const existingMembers = await FamilyMember.find({ familyCircleId: circle._id });
-    if (existingMembers.length === 0) {
-      const demoProfiles = [
-        { name: 'John', relation: 'Self', age: 22, heartRate: 72, bloodPressure: '120/80', steps: 8500, sleep: '7h' },
-        { name: 'Vikram', relation: 'Father', age: 52, heartRate: 78, bloodPressure: '135/85', steps: 4200, sleep: '6h' },
-        { name: 'Anita', relation: 'Mother', age: 48, heartRate: 74, bloodPressure: '125/80', steps: 5100, sleep: '7.5h' }
-      ];
+    const demoProfiles = [
+      { name: 'John', relation: 'Self', age: 22, heartRate: 72, bloodPressure: '120/80', steps: 8500, sleep: '7h', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Felix&backgroundColor=transparent' },
+      { name: 'Vikram', relation: 'Father', age: 52, heartRate: 78, bloodPressure: '135/85', steps: 4200, sleep: '6h', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Caleb&backgroundColor=transparent' },
+      { name: 'Anita', relation: 'Mother', age: 48, heartRate: 74, bloodPressure: '125/80', steps: 5100, sleep: '7.5h', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Anya&backgroundColor=transparent' }
+    ];
 
-      for (const profile of demoProfiles) {
-        const member = await FamilyMember.create({
-          ...profile,
-          userId: user._id,
-          familyCircleId: circle._id,
-          avatarColor: `#${Math.floor(Math.random()*16777215).toString(16)}`
-        });
+    // CRITICAL: Clean up ALL existing members for this user to avoid duplicates and ensure sync
+    await FamilyMember.deleteMany({ userId: user._id });
+    console.log('🧹 Cleaned up ALL existing family members for demo user');
 
-        // 1. Generate 7 days of Vitals history
+    for (const profile of demoProfiles) {
+      const member = await FamilyMember.create({
+        ...profile,
+        userId: user._id,
+        familyCircleId: circle._id,
+        avatarColor: `#${Math.floor(Math.random() * 16777215).toString(16)}`
+      });
+      console.log(`🌱 Created member: ${profile.name}`);
+
+      // Ensure 7 days of Vitals history exists
+      const existingLogs = await VitalLog.countDocuments({ familyMemberId: member._id });
+      if (existingLogs < 7) {
+        // Clear and re-generate if incomplete
+        await VitalLog.deleteMany({ familyMemberId: member._id });
         const logs = [];
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
-          
+
           logs.push({
             familyMemberId: member._id,
             heartRate: profile.heartRate + (Math.floor(Math.random() * 10) - 5),
-            bloodPressure: `${115 + Math.floor(Math.random() * 15)}/${75 + Math.floor(Math.random() * 10)}`,
-            steps: profile.steps + (Math.floor(Math.random() * 2000) - 1000),
+            hydration: 2000 + (Math.floor(Math.random() * 1000) - 500),
             weight: 70 + (Math.floor(Math.random() * 10) - 5),
             height: profile.name === 'Vikram' ? 175 : 170,
             recordedAt: date
           });
         }
         await VitalLog.insertMany(logs);
+      }
 
-        // 2. Add some sample symptoms for the "John" profile
-        if (profile.name === 'John') {
-            await SymptomLog.create([
-                {
-                    familyMemberId: member._id,
-                    symptoms: 'Chest pain and shortness of breath',
-                    analysis: 'Potential Cardiac Issue detected. High correlation with medical patterns for angina or early-stage cardiovascular distress.',
-                    recommendation: 'General Physician First: Please consult a GP immediately for a diagnostic ECG.',
-                    severity: 'High',
-                    recordedAt: new Date(Date.now() - 86400000 * 2) // 2 days ago
-                },
-                {
-                    familyMemberId: member._id,
-                    symptoms: 'Frequent headaches and blurred vision',
-                    analysis: 'Stress or Hypertension suspected based on symptom cluster.',
-                    recommendation: 'Rest and hydration. Check blood pressure twice daily.',
-                    severity: 'Medium',
-                    recordedAt: new Date(Date.now() - 86400000 * 5) // 5 days ago
-                }
-            ]);
+      // Add sample symptoms for the "John" profile if none exist
+      if (profile.name === 'John') {
+        const existingSymptoms = await SymptomLog.countDocuments({ familyMemberId: member._id });
+        if (existingSymptoms === 0) {
+          await SymptomLog.create([
+            {
+              familyMemberId: member._id,
+              symptoms: 'Chest pain and shortness of breath',
+              analysis: 'Potential Cardiac Issue detected. High correlation with medical patterns for angina or early-stage cardiovascular distress.',
+              recommendation: 'General Physician First: Please consult a GP immediately for a diagnostic ECG.',
+              severity: 'Emergency',
+              recordedAt: new Date(Date.now() - 86400000 * 2) // 2 days ago
+            },
+            {
+              familyMemberId: member._id,
+              symptoms: 'Frequent headaches and blurred vision',
+              analysis: 'Stress or Hypertension suspected based on symptom cluster.',
+              recommendation: 'Rest and hydration. Check blood pressure twice daily.',
+              severity: 'Consult Doctor',
+              recordedAt: new Date(Date.now() - 86400000 * 5) // 5 days ago
+            }
+          ]);
         }
       }
-      console.log('🌱 Demo data-rich profiles seeded successfully');
     }
+    console.log('🌱 Demo data-rich profiles synchronized successfully');
   } catch (err) {
     console.error('❌ Seeding error:', err);
   }
@@ -165,35 +185,35 @@ const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'] || req.headers['Authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  
-  if (!token) { 
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Please log in again.' }); 
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Please log in again.' });
   }
-  
+
   if (dbConnected) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const userId = decoded.id;
       const user = await User.findById(userId);
-      
+
       if (!user) {
         return res.status(403).json({ error: 'Forbidden: Valid user record required' });
       }
 
       // Migration: Ensure user has a Family Circle
       if (!user.familyCircleId) {
-          const circle = await FamilyCircle.create({
-              name: `${user.name || user.email}'s Family`,
-              ownerId: user._id,
-              members: [user._id]
-          });
-          user.familyCircleId = circle._id;
-          await user.save();
-          
-          await FamilyMember.updateMany(
-              { userId: user._id, familyCircleId: { $exists: false } },
-              { familyCircleId: circle._id }
-          );
+        const circle = await FamilyCircle.create({
+          name: `${user.name || user.email}'s Family`,
+          ownerId: user._id,
+          members: [user._id]
+        });
+        user.familyCircleId = circle._id;
+        await user.save();
+
+        await FamilyMember.updateMany(
+          { userId: user._id, familyCircleId: { $exists: false } },
+          { familyCircleId: circle._id }
+        );
       }
 
       req.userId = userId;
@@ -222,7 +242,7 @@ app.post('/api/auth/register', async (req, res) => {
       if (existingUser) return res.status(400).json({ error: 'User already exists' });
 
       const user = await User.create({ email, name: name || email.split('@')[0], password });
-      
+
       // Auto-create a primary family circle for new users
       const circle = await FamilyCircle.create({
         name: `${user.name}'s Family`,
@@ -253,25 +273,25 @@ app.post('/api/auth/login', async (req, res) => {
     if (dbConnected) {
       const user = await User.findOne({ email });
       if (!user) return res.status(404).json({ error: 'User not found' });
-      
+
       const isMatch = await user.comparePassword(password);
       if (!isMatch) {
         return res.status(401).json({ error: 'Invalid password' });
       }
-      
+
       const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-      return res.json({ 
-          token,
-          id: user._id, 
-          email: user.email, 
-          name: user.name, 
-          familyCircleId: user.familyCircleId 
+      return res.json({
+        token,
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        familyCircleId: user.familyCircleId
       });
     }
 
     // Fallback for development if test-user ID is known
     if (email === 'demo@famplus.com' && password === '123456') {
-        return res.json({ id: 'demo-user-id', email, name: 'Demo User' });
+      return res.json({ id: 'demo-user-id', email, name: 'Demo User' });
     }
 
     res.status(503).json({ error: 'Database disconnected' });
@@ -296,14 +316,14 @@ app.delete('/api/auth/account', requireAuth, async (req, res) => {
     // Handle Circle association
     const user = req.user;
     if (user.familyCircleId) {
-        const circle = await FamilyCircle.findById(user.familyCircleId);
-        if (circle) {
-            if (circle.ownerId.toString() === userId) {
-                await FamilyCircle.findByIdAndDelete(user.familyCircleId);
-            } else {
-                await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: userId } });
-            }
+      const circle = await FamilyCircle.findById(user.familyCircleId);
+      if (circle) {
+        if (circle.ownerId.toString() === userId) {
+          await FamilyCircle.findByIdAndDelete(user.familyCircleId);
+        } else {
+          await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: userId } });
         }
+      }
     }
 
     await User.findByIdAndDelete(userId);
@@ -324,7 +344,7 @@ app.get('/api/family', requireAuth, async (req, res) => {
     if (dbConnected) {
       const user = req.user;
       if (!user?.familyCircleId) return res.status(404).json({ error: 'Circle not found' });
-      
+
       const members = await FamilyMember.find({ familyCircleId: user.familyCircleId }).sort({ createdAt: -1 });
 
       const enhancedMembers = await Promise.all(members.map(async (member) => {
@@ -362,8 +382,18 @@ app.post('/api/family', requireAuth, async (req, res) => {
         ...req.body,
         userId: user._id,
         familyCircleId: user.familyCircleId,
-        avatarColor: req.body.avatarColor || `#${Math.floor(Math.random()*16777215).toString(16)}`
+        avatarColor: req.body.avatarColor || `#${Math.floor(Math.random() * 16777215).toString(16)}`
       });
+
+      // SYNC: If this is the user themselves (Self), update the User document too
+      if (member.relation === 'Self') {
+        await User.findByIdAndUpdate(user._id, {
+          name: member.name,
+          avatar: member.avatar
+        });
+        console.log(`🔄 Synced User profile for ${member.name} on creation`);
+      }
+
       res.status(201).json(member);
     }
   } catch (err) {
@@ -380,6 +410,16 @@ app.put('/api/family/:memberId', requireAuth, async (req, res) => {
       { new: true }
     );
     if (!member) return res.status(404).json({ error: 'Member not found or unauthorized' });
+
+    // SYNC: If this is the user themselves (Self), update the User document too
+    if (member.relation === 'Self' && member.userId.toString() === req.userId) {
+      await User.findByIdAndUpdate(req.userId, {
+        name: member.name,
+        avatar: member.avatar
+      });
+      console.log(`🔄 Synced User profile for ${member.name}`);
+    }
+
     res.json(member);
   } catch (err) {
     console.error(err);
@@ -526,19 +566,27 @@ app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
       specialty: { $regex: specialist, $options: 'i' }
     }).limit(5);
 
+    // Fallback: if no specific specialist found, return General Physicians
+    if (doctors.length === 0) {
+      console.log(`No doctors found for "${specialist}". Falling back to General Physician.`);
+      doctors = await Doctor.find({
+        specialty: { $regex: 'General Physician', $options: 'i' }
+      }).limit(5);
+    }
+
     // ── Easter Egg: Ghost of Park Street ─────────────────────────────────────
     if (specialist === 'Professional Exorcist') {
-        doctors = [{
-            id: 'ghost-1',
-            name: 'The Ghost of Park Street',
-            specialty: 'Professional Exorcist',
-            hospital: 'South Park Street Cemetery',
-            address: '52, Park St, Mullick Bazar, Park Street area, Kolkata, West Bengal 700017',
-            rating: 4.9,
-            lat: 22.5448,
-            lng: 88.3591,
-            phone: 'BOO-GHOST-BUSTERS'
-        }];
+      doctors = [{
+        id: 'ghost-1',
+        name: 'The Ghost of Park Street',
+        specialty: 'Professional Exorcist',
+        hospital: 'South Park Street Cemetery',
+        address: '52, Park St, Mullick Bazar, Park Street area, Kolkata, West Bengal 700017',
+        rating: 4.9,
+        lat: 22.5448,
+        lng: 88.3591,
+        phone: 'BOO-GHOST-BUSTERS'
+      }];
     }
 
     res.json({ analysis: `${condition} — ${advice}`, specialty: specialist, doctors });
@@ -594,7 +642,7 @@ app.get('/api/circle/details', requireAuth, async (req, res) => {
     const user = await User.findById(req.userId).populate('familyCircleId');
     if (!user?.familyCircleId) return res.status(404).json({ error: 'Circle not found' });
 
-    const circle = await FamilyCircle.findById(user.familyCircleId).populate('members', 'email name');
+    const circle = await FamilyCircle.findById(user.familyCircleId).populate('members', 'email name avatar');
     res.json(circle);
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -607,11 +655,11 @@ app.post('/api/circle/invite', requireAuth, async (req, res) => {
     const { email } = req.body;
     const invitee = await User.findOne({ email });
     if (!invitee) return res.status(404).json({ error: 'User not found' });
-    
+
     // Check if user is already in a circle or has a pending invite?
     // Keep it simple: send the invite
-    await User.findByIdAndUpdate(invitee._id, { 
-      $push: { pendingInvites: { circleId: req.user.familyCircleId, invitedBy: req.userId } } 
+    await User.findByIdAndUpdate(invitee._id, {
+      $push: { pendingInvites: { circleId: req.user.familyCircleId, invitedBy: req.userId } }
     });
 
     res.json({ success: true, message: `Invite sent to ${email}` });
@@ -625,11 +673,11 @@ app.get('/api/circle/invites', requireAuth, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
     const circles = await FamilyCircle.find({ pendingInvites: user.email.toLowerCase() });
-    
+
     res.json(circles.map(c => ({
-        id: c._id,
-        name: c.name,
-        inviter: c.ownerId // Could populate later
+      id: c._id,
+      name: c.name,
+      inviter: c.ownerId // Could populate later
     })));
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
@@ -641,10 +689,10 @@ app.post('/api/circle/accept', requireAuth, async (req, res) => {
   try {
     const { circleId } = req.body;
     const user = req.user;
-    
+
     // 1. Remove from old circle if owner? (Optional: simplified)
     if (user.familyCircleId) {
-        await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: req.userId } });
+      await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: req.userId } });
     }
 
     // 2. Add to new circle
@@ -653,21 +701,21 @@ app.post('/api/circle/accept', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired invitation' });
     }
     if (user.familyCircleId) {
-        await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: userId } });
+      await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: userId } });
     }
 
     // 2. Join new circle
     user.familyCircleId = circleId;
     newCircle.members.push(userId);
     newCircle.pendingInvites = newCircle.pendingInvites.filter(e => e !== user.email.toLowerCase());
-    
+
     await user.save();
     await newCircle.save();
 
     // 3. MERGE DATA (Safety Net): Move my family members to the new circle
     const result = await FamilyMember.updateMany(
-        { userId: userId }, 
-        { familyCircleId: circleId }
+      { userId: userId },
+      { familyCircleId: circleId }
     );
 
     res.json({ success: true, migratedCount: result.modifiedCount });

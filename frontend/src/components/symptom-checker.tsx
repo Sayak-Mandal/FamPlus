@@ -1,11 +1,17 @@
 import React, { useState } from 'react'
-import { predictCondition } from '@/services/ai-model'
+import { predictCondition, VitalsContext } from '@/services/ai-model'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2 } from 'lucide-react'
 import { getFamilyMembers, logSymptom } from '@/app/actions/health'
 import { Link } from "react-router-dom";
+
+/**
+ * Maximum age (in minutes) before dashboard vitals are considered stale.
+ * Vitals older than this will NOT be sent to the AI engine.
+ */
+const VITALS_FRESHNESS_LIMIT = 180; // 3 hours
 
 export function SymptomChecker() {
     const [symptoms, setSymptoms] = useState("")
@@ -20,10 +26,12 @@ export function SymptomChecker() {
         disclaimer?: string;
         top_matches?: { condition: string; confidence: number }[];
         next_steps?: string[];
+        vitals_analysis?: string[];
     } | null>(null)
     const [loading, setLoading] = useState(false)
     const [members, setMembers] = useState<any[]>([])
     const [selectedMember, setSelectedMember] = useState("")
+    const [vitalsStatus, setVitalsStatus] = useState<'fresh' | 'stale' | 'none'>('none')
 
     React.useEffect(() => {
         const fetchMembers = async () => {
@@ -41,11 +49,52 @@ export function SymptomChecker() {
         fetchMembers()
     }, [])
 
+    // Compute vitals freshness whenever selected member changes
+    const selectedMemberData = members.find(m => (m._id || m.id) === selectedMember)
+    
+    React.useEffect(() => {
+        if (!selectedMemberData) {
+            setVitalsStatus('none')
+            return
+        }
+        const updatedAt = selectedMemberData.updatedAt
+        if (!updatedAt) {
+            setVitalsStatus('none')
+            return
+        }
+        const ageMinutes = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000)
+        setVitalsStatus(ageMinutes <= VITALS_FRESHNESS_LIMIT ? 'fresh' : 'stale')
+    }, [selectedMember, selectedMemberData])
+
+    /**
+     * Build a VitalsContext from the selected member's dashboard data.
+     * Returns undefined if no member is selected or vitals are stale.
+     */
+    const buildVitalsContext = (): VitalsContext | undefined => {
+        if (!selectedMemberData) return undefined
+
+        const updatedAt = selectedMemberData.updatedAt
+        if (!updatedAt) return undefined
+
+        const ageMinutes = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000)
+
+        // Always send the context — the backend will decide if it's fresh enough.
+        // This way the backend can still return a "data too old" message in vitals_analysis.
+        return {
+            heart_rate:       selectedMemberData.heartRate || undefined,
+            blood_pressure:   selectedMemberData.bloodPressure || undefined,
+            sleep:            selectedMemberData.sleep || undefined,
+            age:              selectedMemberData.age || undefined,
+            data_age_minutes: ageMinutes,
+        }
+    }
+
     const handleAnalyze = async () => {
         if (!symptoms.trim()) return;
         setLoading(true);
         try {
-            const prediction = await predictCondition(symptoms);
+            const vitalsContext = buildVitalsContext();
+            const prediction = await predictCondition(symptoms, vitalsContext);
             setResult(prediction);
 
             // Log to Database if member selected
@@ -80,7 +129,7 @@ export function SymptomChecker() {
                 </CardTitle>
                 <CardDescription className="text-base mt-2 font-medium">
                     Analyze symptoms using our trained medical diagnostic model with grounding context.
-                    <span className="block mt-2 text-[10px] uppercase tracking-tighter font-bold text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/30 px-3 py-1 rounded-full w-fit">
+                    <span className="block mt-2 text-[10px] uppercase tracking-tighter font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 dark:bg-orange-500/20 px-3 py-1 rounded-full w-fit">
                         ⚠️ Consult a professional GP for definitive diagnosis
                     </span>
                 </CardDescription>
@@ -98,6 +147,36 @@ export function SymptomChecker() {
                                 <option key={m._id || m.id} value={m._id || m.id}>{m.name}</option>
                             ))}
                         </select>
+                        {/* Vitals Status Indicator */}
+                        {selectedMemberData && (
+                            <div className={`mt-2 flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold w-fit transition-all ${
+                                vitalsStatus === 'fresh' 
+                                    ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' 
+                                    : vitalsStatus === 'stale'
+                                        ? 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                                        : 'bg-muted text-muted-foreground'
+                            }`}>
+                                {vitalsStatus === 'fresh' ? (
+                                    <>
+                                        <HeartPulse className="h-3 w-3" />
+                                        Live vitals active
+                                        {selectedMemberData.heartRate > 0 && (
+                                            <span className="opacity-70">• {selectedMemberData.heartRate} bpm</span>
+                                        )}
+                                    </>
+                                ) : vitalsStatus === 'stale' ? (
+                                    <>
+                                        <Clock className="h-3 w-3" />
+                                        Vitals outdated — symptom-only mode
+                                    </>
+                                ) : (
+                                    <>
+                                        <Activity className="h-3 w-3" />
+                                        No vitals data
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div className="relative flex-1">
                         <Input
@@ -225,6 +304,26 @@ export function SymptomChecker() {
                                 </Button>
                             </div>
                         </div>
+
+                        {/* Vitals Analysis Section — NEW */}
+                        {result.vitals_analysis && result.vitals_analysis.length > 0 && (
+                            <div className="bg-muted/20 p-8 rounded-[2rem] border border-border/50">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <HeartPulse className="h-5 w-5 text-primary" />
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-primary/80">
+                                        Dashboard Vitals Analysis
+                                    </p>
+                                </div>
+                                <div className="space-y-3">
+                                    {result.vitals_analysis.map((analysis, i) => (
+                                        <div key={i} className="flex items-start gap-2.5 text-sm font-medium text-foreground/80 leading-relaxed">
+                                            <CheckCircle2 className="h-4 w-4 mt-0.5 text-primary/60 shrink-0" />
+                                            <span>{analysis}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Description Section */}
                         {result.description && (

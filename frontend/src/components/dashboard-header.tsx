@@ -1,4 +1,5 @@
 
+import { useState } from "react"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -8,7 +9,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { LayoutDashboard, Settings, LogOut, User, Bell, Menu, PlusCircle, Trash2 } from "lucide-react"
+import { LayoutDashboard, Settings, LogOut, User, Bell, Menu, PlusCircle, Trash2, Activity } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "@/components/sidebar"
@@ -43,19 +44,29 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
     const displayEmail = user?.email || "user@famplus.com";
     const initials = displayName.charAt(0).toUpperCase();
 
+    const [isMobileOpen, setIsMobileOpen] = useState(false);
+
     return (
         <header className="h-16 border-b bg-white flex items-center justify-between px-4 md:px-8">
             <div className="flex items-center gap-4">
-                <Sheet>
+                <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
                     <SheetTrigger asChild>
                         <Button variant="ghost" size="icon" className="md:hidden h-11 w-11">
                             <Menu className="h-6 w-6" />
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="p-0 bg-white w-72">
-                        <Sidebar />
+                        <Sidebar onClose={() => setIsMobileOpen(false)} />
                     </SheetContent>
                 </Sheet>
+                
+                {/* Brand Logo & Name */}
+                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate("/dashboard")}>
+                    <div className="bg-primary/10 p-1.5 rounded-lg group-hover:bg-primary/20 transition-colors">
+                        <Activity className="h-5 w-5 text-primary" />
+                    </div>
+                    <span className="text-xl font-black tracking-tighter text-foreground">FamPlus</span>
+                </div>
             </div>
             <DropdownMenu>
                 <DropdownMenuTrigger className="outline-none">

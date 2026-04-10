@@ -24,6 +24,11 @@ const DoctorSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  hospital: {
+    type: String,
+    required: true,
+    trim: true
+  },
   address: {
     type: String,
     required: true

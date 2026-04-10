@@ -23,6 +23,10 @@ const UserSchema = new mongoose.Schema({
     default: null,
     trim: true
   },
+  avatar: {
+    type: String,
+    default: ""
+  },
   familyCircleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'FamilyCircle'

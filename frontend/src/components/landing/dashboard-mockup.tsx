@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Heart, Zap, History } from "lucide-react"
+import { Activity, Heart, Zap, History, Brain } from "lucide-react"
 
 export function DashboardMockup() {
   return (
@@ -42,7 +42,7 @@ export function DashboardMockup() {
           <div className="bg-primary/5 p-4 rounded-2xl border border-primary/10">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                <Brain className="w-3.5 h-3.5 text-primary animate-pulse" />
                 <span className="text-xs font-bold text-primary">AI Diagnostic Analysis</span>
               </div>
               <Badge variant="outline" className="bg-white text-[10px] py-0">High Confidence</Badge>
