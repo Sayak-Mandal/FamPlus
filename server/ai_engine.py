@@ -1,15 +1,20 @@
 """
-Famplus AI Inference Engine
-----------------------------
+Famplus AI Inference Engine (v2 — Vitals-Aware XGBoost)
+-------------------------------------------------------
 FastAPI server exposing two endpoints for health analysis:
-  POST /predict_symptoms  — symptom-to-doctor recommendation (NLP + Model)
+  POST /predict_symptoms  — symptom-to-doctor recommendation (NLP + XGBoost)
   POST /predict_wellness  — vitals history wellness scoring (Rule-based Trend Analysis)
 
 Architectural Overview:
-  The engine uses a decoupled architecture where the ML model (Bernoulli Naive Bayes) 
-  is loaded as a serialized asset. It sits behind an NLP pre-processing layer that 
-  maps natural language (free text) to a binary feature vector compatible with the 
-  model's trained vocabulary.
+  The engine uses a decoupled architecture where the ML model (XGBoost Gradient
+  Boosted Classifier) is loaded as a serialized asset. It sits behind an NLP 
+  pre-processing layer that maps natural language (free text) to a combined 
+  feature vector of binary symptoms + scaled numerical vitals (Age, HeartRate,
+  SystolicBP, DiastolicBP).
+
+  The model directly learns the relationship between vitals and disease severity,
+  so a 60-year-old with chest pain and high blood pressure will get a more 
+  accurate cardiac risk assessment than a 20-year-old with the same symptoms.
 
 Design Philosophy (IMPORTANT — "General Physician First"):
   - The model should recommend specialists, NOT provide a final clinical diagnosis.
@@ -26,7 +31,7 @@ import joblib
 import os
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Famplus AI Engine", version="2.0")
+app = FastAPI(title="Famplus AI Engine", version="3.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 # Allow all origins for the internal Famplus frontend
@@ -42,14 +47,25 @@ app.add_middleware(
 MODEL_PATH    = 'model.joblib'
 METADATA_PATH = 'metadata.joblib'
 
-model    = None
-metadata = None
+model           = None
+metadata        = None
+vitals_scaler   = None   # StandardScaler for vitals normalization (loaded from metadata)
+vitals_columns  = ['Age', 'HeartRate', 'SystolicBP', 'DiastolicBP']  # default
+model_type      = 'naive_bayes'  # will be overridden if metadata says 'gradient_boosting' or 'xgboost'
 
 if os.path.exists(MODEL_PATH) and os.path.exists(METADATA_PATH):
     try:
         model    = joblib.load(MODEL_PATH)
         metadata = joblib.load(METADATA_PATH)
-        print("✅ ML Model and Metadata loaded successfully")
+        # Load v2 (XGBoost) specific metadata if present
+        vitals_scaler  = metadata.get('vitals_scaler', None)
+        vitals_columns = metadata.get('vitals_columns', ['Age', 'HeartRate', 'SystolicBP', 'DiastolicBP'])
+        model_type     = metadata.get('model_type', 'naive_bayes')
+        print(f"✅ ML Model loaded successfully (type={model_type})")
+        if vitals_scaler is not None:
+            print(f"   ✅ Vitals scaler loaded (columns={vitals_columns})")
+        else:
+            print(f"   ⚠️  No vitals scaler — running in symptom-only mode")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
 else:
@@ -1101,6 +1117,78 @@ def get_fallback_response(reason: str) -> SymptomResponse:
 #  Endpoints
 # ══════════════════════════════════════════════════════════════════════════════
 
+
+def build_feature_vector(
+    valid_features: List[str],
+    all_symptoms: List[str],
+    vitals_context: Optional[VitalsContext] = None,
+) -> np.ndarray:
+    """Builds the combined symptom + vitals feature vector for the model.
+
+    For XGBoost v2 models, the feature vector has:
+      - N binary columns for symptoms (multi-hot encoded)
+      - 4 scaled numerical columns for vitals (Age, HeartRate, SystolicBP, DiastolicBP)
+
+    For legacy Naive Bayes models, only the symptom columns are used.
+
+    Args:
+        valid_features: List of recognized symptom tokens.
+        all_symptoms: Full symptom vocabulary from model metadata.
+        vitals_context: Optional vitals from the user's dashboard.
+
+    Returns:
+        A numpy feature vector ready for model.predict_proba().
+    """
+    n_symptoms = len(all_symptoms)
+
+    if model_type in ('xgboost', 'gradient_boosting') and vitals_scaler is not None:
+        # v2: Combined symptom + vitals vector
+        n_vitals = len(vitals_columns)  # 4
+        X = np.zeros(n_symptoms + n_vitals, dtype=np.float32)
+
+        # Fill symptom columns (binary)
+        for s in valid_features:
+            if s in all_symptoms:
+                idx = all_symptoms.index(s)
+                X[idx] = 1.0
+
+        # Fill vitals columns (raw values → will be scaled)
+        raw_vitals = np.zeros((1, n_vitals), dtype=np.float32)
+
+        # Defaults (population mean) — used when vitals are not provided
+        defaults = [35, 75, 120, 78]  # Age, HR, SBP, DBP
+
+        if vitals_context is not None:
+            # Age
+            raw_vitals[0, 0] = float(vitals_context.age) if vitals_context.age and vitals_context.age > 0 else defaults[0]
+            # HeartRate
+            raw_vitals[0, 1] = float(vitals_context.heart_rate) if vitals_context.heart_rate and vitals_context.heart_rate > 0 else defaults[1]
+            # Blood Pressure → SystolicBP, DiastolicBP
+            if vitals_context.blood_pressure:
+                sbp, dbp = parse_bp(vitals_context.blood_pressure)
+                raw_vitals[0, 2] = float(sbp)
+                raw_vitals[0, 3] = float(dbp)
+            else:
+                raw_vitals[0, 2] = defaults[2]
+                raw_vitals[0, 3] = defaults[3]
+        else:
+            raw_vitals[0, :] = defaults
+
+        # Scale vitals using the same scaler from training
+        scaled_vitals = vitals_scaler.transform(raw_vitals)
+        X[n_symptoms:] = scaled_vitals[0]
+
+        return X
+    else:
+        # Legacy: symptom-only vector for Naive Bayes
+        X = np.zeros(n_symptoms, dtype=np.float32)
+        for s in valid_features:
+            if s in all_symptoms:
+                idx = all_symptoms.index(s)
+                X[idx] = 1.0
+        return X
+
+
 @app.post("/predict_symptoms", response_model=SymptomResponse)
 def predict_symptoms(data: SymptomRequest):
     """Predicts a likely health condition and recommends a specialist.
@@ -1108,7 +1196,7 @@ def predict_symptoms(data: SymptomRequest):
     Flow:
     1. Direct Lookup: Checks if query is a known disease name.
     2. Parsing: Extracts symptoms using the NLP pipeline (`normalize_input`).
-    3. Inference: Computes probabilities via the Bernoulli Naive Bayes model.
+    3. Inference: Computes probabilities via the XGBoost model (vitals-aware).
     4. Safety Logic: Adjusts probabilities and gates severe diagnoses.
     5. Enrichment: Adds precautions and specialist info from metadata.
     """
@@ -1177,19 +1265,26 @@ def predict_symptoms(data: SymptomRequest):
     severity_score = sum(metadata['severity_map'].get(s, 0) for s in valid_features)
 
     # ── Step 4: Build Feature Vector & Get Model Probabilities ────────────────
-    X_input = np.zeros(len(metadata['all_symptoms']), dtype=np.float32)
-    for s in valid_features:
-        idx          = metadata['all_symptoms'].index(s)
-        X_input[idx] = 1.0
+    # For XGBoost v2: vitals are embedded DIRECTLY into the feature vector,
+    # so the model itself can learn age/BP/HR-disease correlations.
+    X_input = build_feature_vector(
+        valid_features  = valid_features,
+        all_symptoms    = metadata['all_symptoms'],
+        vitals_context  = data.vitals_context,
+    )
 
     raw_probabilities = model.predict_proba([X_input])[0]
+
+    vitals_in_model = (model_type in ('xgboost', 'gradient_boosting') and vitals_scaler is not None)
+    if vitals_in_model and data.vitals_context:
+        print(f"DEBUG [VITALS→MODEL]: Vitals embedded directly into XGBoost feature vector")
 
     # ── Step 5: Apply Conservative Adjustments ────────────────────────────────
     adjusted_probs = apply_conservative_adjustments(raw_probabilities, valid_features, le)
 
-    # ── Step 5a: Vitals Context Integration ───────────────────────────────────
-    # If the frontend sent dashboard vitals, use them to bias probabilities
-    # toward conditions supported by objective measurements.
+    # ── Step 5a: Vitals Context Integration (Rule-Based Layer) ────────────────
+    # Even with vitals in the model, the rule-based layer adds safety analysis
+    # and provides human-readable explanations for the vitals_analysis field.
     vitals_analysis: list[str] = []
     vitals_evidence = 0
     if data.vitals_context is not None:

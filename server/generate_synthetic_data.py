@@ -1,14 +1,26 @@
 """
-Synthetic Medical Training Data Generator
-------------------------------------------
+Synthetic Medical Training Data Generator (v2 — Vitals-Aware)
+--------------------------------------------------------------
 This script generates medically plausible synthetic data to balance 
 under-represented classes in the disease training set.
 
+v2 Enhancement (Vitals-Aware):
+  Each synthetic row now includes medically realistic vital signs:
+    - Age         (years)
+    - HeartRate   (bpm)
+    - SystolicBP  (mmHg)
+    - DiastolicBP (mmHg)
+  These are sampled from per-disease clinical distributions so the 
+  downstream XGBoost model can learn the correlation between vitals 
+  and disease severity.
+
 Algorithm:
   1. Profile Extraction: Learns core vs. secondary symptoms for each disease.
-  2. Weighted Sampling: Generates new rows by combining hallmark markers with 
+  2. Vitals Sampling: Generates age, heart rate, and blood pressure from 
+     medically plausible ranges per disease.
+  3. Weighted Sampling: Generates new rows by combining hallmark markers with 
      statistically likely secondary symptoms.
-  3. Noise Injection: Injects medically irrelevant symptoms to improve model 
+  4. Noise Injection: Injects medically irrelevant symptoms to improve model 
      robustness and generalize to noisy user inputs.
 """
 
@@ -40,6 +52,329 @@ MAX_SYMPTOMS = 8
 RANDOM_SEED = 2024
 random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Disease → Vitals Clinical Profiles
+#  Each disease gets a medically realistic vitals distribution.
+#  Format: { 'age': (mean, std), 'hr': (mean, std), 'sbp': (mean, std), 'dbp': (mean, std) }
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Default vitals for diseases without a specific profile
+DEFAULT_VITALS_PROFILE = {
+    'age': (35, 15),    # Mean 35, std 15 → broad general population
+    'hr':  (75, 10),    # Normal resting heart rate
+    'sbp': (120, 12),   # Normal systolic BP
+    'dbp': (78, 8),     # Normal diastolic BP
+}
+
+DISEASE_VITALS_PROFILES = {
+    # ── Cardiac / Vascular ─────────────────────────────────────────────────
+    'Heart attack': {
+        'age': (58, 12),    # Older patients, higher risk
+        'hr':  (105, 20),   # Tachycardia common during MI
+        'sbp': (155, 20),   # Hypertension is a major risk factor
+        'dbp': (95, 12),
+    },
+    'Hypertension': {
+        'age': (52, 14),
+        'hr':  (82, 12),
+        'sbp': (152, 18),   # Elevated by definition
+        'dbp': (96, 10),
+    },
+    'Hypertension ': {      # Trailing space variant in original dataset
+        'age': (52, 14),
+        'hr':  (82, 12),
+        'sbp': (152, 18),
+        'dbp': (96, 10),
+    },
+    'Varicose veins': {
+        'age': (48, 15),
+        'hr':  (72, 8),
+        'sbp': (128, 14),
+        'dbp': (82, 8),
+    },
+
+    # ── Neurological ───────────────────────────────────────────────────────
+    'Paralysis (brain hemorrhage)': {
+        'age': (62, 14),    # Stroke risk increases with age
+        'hr':  (90, 18),
+        'sbp': (165, 22),   # Severe hypertension linked to hemorrhagic stroke
+        'dbp': (100, 12),
+    },
+    'Migraine': {
+        'age': (32, 12),    # Common in younger adults
+        'hr':  (78, 10),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Cervical spondylosis': {
+        'age': (55, 12),    # Degenerative — older population
+        'hr':  (72, 8),
+        'sbp': (130, 14),
+        'dbp': (84, 8),
+    },
+    '(vertigo) Paroymsal  Positional Vertigo': {
+        'age': (50, 15),
+        'hr':  (74, 10),
+        'sbp': (125, 12),
+        'dbp': (80, 8),
+    },
+
+    # ── Respiratory / Infectious ───────────────────────────────────────────
+    'Common Cold': {
+        'age': (28, 15),    # All ages, but skews younger
+        'hr':  (80, 8),     # Slightly elevated (mild fever)
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Common Flu': {
+        'age': (30, 15),
+        'hr':  (88, 10),    # Fever-driven tachycardia
+        'sbp': (116, 10),
+        'dbp': (74, 8),
+    },
+    'Pneumonia': {
+        'age': (45, 20),
+        'hr':  (95, 15),    # Elevated due to infection
+        'sbp': (122, 14),
+        'dbp': (78, 10),
+    },
+    'Tuberculosis': {
+        'age': (38, 15),
+        'hr':  (90, 12),
+        'sbp': (115, 12),
+        'dbp': (72, 8),
+    },
+    'Bronchial Asthma': {
+        'age': (25, 15),
+        'hr':  (88, 12),
+        'sbp': (120, 10),
+        'dbp': (78, 8),
+    },
+
+    # ── Tropical / Infectious ──────────────────────────────────────────────
+    'Dengue': {
+        'age': (28, 14),
+        'hr':  (92, 14),    # Fever-driven
+        'sbp': (108, 12),   # Hypotension possible in severe dengue
+        'dbp': (68, 10),
+    },
+    'Malaria': {
+        'age': (30, 15),
+        'hr':  (96, 14),
+        'sbp': (112, 12),
+        'dbp': (70, 10),
+    },
+    'Typhoid': {
+        'age': (25, 12),
+        'hr':  (85, 10),
+        'sbp': (110, 10),
+        'dbp': (70, 8),
+    },
+    'Chicken pox': {
+        'age': (12, 8),     # Common in children
+        'hr':  (90, 12),
+        'sbp': (110, 10),
+        'dbp': (70, 8),
+    },
+
+    # ── Hepatic / GI ──────────────────────────────────────────────────────
+    'Hepatitis B': {
+        'age': (35, 14),
+        'hr':  (78, 10),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Hepatitis C': {
+        'age': (40, 14),
+        'hr':  (76, 10),
+        'sbp': (120, 10),
+        'dbp': (78, 8),
+    },
+    'Hepatitis D': {
+        'age': (38, 14),
+        'hr':  (78, 10),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Hepatitis E': {
+        'age': (30, 12),
+        'hr':  (80, 10),
+        'sbp': (116, 10),
+        'dbp': (74, 8),
+    },
+    'hepatitis A': {
+        'age': (22, 12),
+        'hr':  (82, 10),
+        'sbp': (114, 10),
+        'dbp': (72, 8),
+    },
+    'Alcoholic hepatitis': {
+        'age': (45, 12),    # Associated with prolonged alcohol use
+        'hr':  (85, 12),
+        'sbp': (130, 14),
+        'dbp': (85, 10),
+    },
+    'Chronic cholestasis': {
+        'age': (48, 14),
+        'hr':  (74, 8),
+        'sbp': (122, 12),
+        'dbp': (80, 8),
+    },
+    'Jaundice': {
+        'age': (30, 18),
+        'hr':  (80, 10),
+        'sbp': (116, 10),
+        'dbp': (74, 8),
+    },
+    'GERD': {
+        'age': (40, 14),
+        'hr':  (76, 8),
+        'sbp': (122, 10),
+        'dbp': (80, 8),
+    },
+    'Gastroenteritis': {
+        'age': (28, 14),
+        'hr':  (88, 12),    # Dehydration can cause tachycardia
+        'sbp': (112, 12),
+        'dbp': (72, 10),
+    },
+    'Peptic ulcer diseae': {
+        'age': (42, 14),
+        'hr':  (78, 10),
+        'sbp': (120, 10),
+        'dbp': (78, 8),
+    },
+    'Dimorphic hemmorhoids(piles)': {
+        'age': (42, 14),
+        'hr':  (74, 8),
+        'sbp': (122, 10),
+        'dbp': (80, 8),
+    },
+
+    # ── Endocrine / Metabolic ──────────────────────────────────────────────
+    'Diabetes': {
+        'age': (50, 14),
+        'hr':  (80, 10),
+        'sbp': (138, 16),   # Often comorbid with hypertension
+        'dbp': (88, 10),
+    },
+    'Diabetes ': {          # Trailing space variant
+        'age': (50, 14),
+        'hr':  (80, 10),
+        'sbp': (138, 16),
+        'dbp': (88, 10),
+    },
+    'Hypoglycemia': {
+        'age': (35, 15),
+        'hr':  (95, 14),    # Sympathetic activation → tachycardia
+        'sbp': (105, 12),   # May drop during episode
+        'dbp': (68, 10),
+    },
+    'Hyperthyroidism': {
+        'age': (35, 12),
+        'hr':  (100, 14),   # Thyroid-driven tachycardia
+        'sbp': (135, 14),
+        'dbp': (75, 10),    # Wide pulse pressure
+    },
+    'Hypothyroidism': {
+        'age': (42, 14),
+        'hr':  (58, 8),     # Bradycardia
+        'sbp': (118, 10),
+        'dbp': (82, 8),
+    },
+
+    # ── Dermatological ─────────────────────────────────────────────────────
+    'Acne': {
+        'age': (18, 6),     # Teenagers / young adults
+        'hr':  (75, 8),
+        'sbp': (115, 8),
+        'dbp': (72, 6),
+    },
+    'Psoriasis': {
+        'age': (35, 14),
+        'hr':  (74, 8),
+        'sbp': (120, 10),
+        'dbp': (78, 8),
+    },
+    'Fungal infection': {
+        'age': (30, 15),
+        'hr':  (74, 8),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Impetigo': {
+        'age': (8, 5),      # Common in children
+        'hr':  (90, 10),
+        'sbp': (105, 10),
+        'dbp': (68, 8),
+    },
+
+    # ── Musculoskeletal ────────────────────────────────────────────────────
+    'Arthritis': {
+        'age': (55, 14),
+        'hr':  (72, 8),
+        'sbp': (130, 14),
+        'dbp': (84, 8),
+    },
+    'Osteoarthristis': {
+        'age': (60, 12),    # Degenerative — elderly
+        'hr':  (70, 8),
+        'sbp': (132, 14),
+        'dbp': (84, 8),
+    },
+
+    # ── Other ──────────────────────────────────────────────────────────────
+    'Allergy': {
+        'age': (28, 15),
+        'hr':  (78, 10),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'Drug Reaction': {
+        'age': (35, 18),
+        'hr':  (85, 14),
+        'sbp': (120, 14),
+        'dbp': (78, 10),
+    },
+    'Urinary tract infection': {
+        'age': (30, 14),
+        'hr':  (82, 10),
+        'sbp': (118, 10),
+        'dbp': (76, 8),
+    },
+    'AIDS': {
+        'age': (35, 10),
+        'hr':  (85, 12),
+        'sbp': (112, 12),
+        'dbp': (70, 10),
+    },
+    'Insomnia': {
+        'age': (38, 14),
+        'hr':  (82, 12),
+        'sbp': (125, 12),
+        'dbp': (80, 8),
+    },
+    'Fever': {
+        'age': (28, 15),
+        'hr':  (92, 12),
+        'sbp': (116, 10),
+        'dbp': (74, 8),
+    },
+    'Slight Headache': {
+        'age': (30, 14),
+        'hr':  (74, 8),
+        'sbp': (118, 8),
+        'dbp': (76, 6),
+    },
+    'Stomach ache': {
+        'age': (30, 14),
+        'hr':  (76, 8),
+        'sbp': (118, 8),
+        'dbp': (76, 6),
+    },
+}
 
 
 from typing import Optional
@@ -105,6 +440,37 @@ def compute_disease_symptom_profiles(
     return profiles
 
 
+def sample_vitals(disease: str) -> dict:
+    """Generates medically plausible vitals for a single synthetic patient.
+
+    Uses per-disease clinical distributions defined in DISEASE_VITALS_PROFILES.
+    Values are clamped to physiologically valid ranges.
+
+    Args:
+        disease: The target disease label.
+
+    Returns:
+        Dict with keys: Age, HeartRate, SystolicBP, DiastolicBP.
+    """
+    profile = DISEASE_VITALS_PROFILES.get(disease, DEFAULT_VITALS_PROFILE)
+
+    age = int(np.clip(np.random.normal(*profile['age']), 2, 95))
+    hr  = int(np.clip(np.random.normal(*profile['hr']), 40, 180))
+    sbp = int(np.clip(np.random.normal(*profile['sbp']), 70, 220))
+    dbp = int(np.clip(np.random.normal(*profile['dbp']), 40, 140))
+
+    # Ensure systolic > diastolic (physiological constraint)
+    if sbp <= dbp:
+        sbp = dbp + random.randint(15, 40)
+
+    return {
+        'Age': age,
+        'HeartRate': hr,
+        'SystolicBP': sbp,
+        'DiastolicBP': dbp,
+    }
+
+
 def generate_synthetic_row(
     disease: str,
     symptom_profile: dict[str, float],
@@ -118,7 +484,7 @@ def generate_synthetic_row(
     The generator ensures each synthetic patient has at least one core hallmark 
     symptom of the target disease, plus a statistically varied set of 
     secondary symptoms. Noise (irrelevant symptoms) is optionally added for 
-    regularization.
+    regularization. Vitals are sampled from the disease-specific profile.
 
     Args:
         disease: The target label (e.g., 'Hypertension').
@@ -127,7 +493,7 @@ def generate_synthetic_row(
         symptom_cols: CSV schema columns.
 
     Returns:
-        A dictionary representing one CSV row.
+        A dictionary representing one CSV row with symptoms + vitals.
     """
     core_symptoms     = {s: f for s, f in symptom_profile.items() if f >= 0.4}
     secondary_symptoms = {s: f for s, f in symptom_profile.items() if f < 0.4}
@@ -174,6 +540,10 @@ def generate_synthetic_row(
     for i, col in enumerate(symptom_cols):
         row[col] = chosen[i] if i < len(chosen) else None
 
+    # ── Step 5: Add vitals columns ────────────────────────────────────────────
+    vitals = sample_vitals(disease)
+    row.update(vitals)
+
     return row
 
 
@@ -206,12 +576,13 @@ def generate_synthetic_dataset(
             row = generate_synthetic_row(disease, profile, all_symptoms, symptom_cols)
             synthetic_rows.append(row)
 
-    return pd.DataFrame(synthetic_rows, columns=['Disease'] + symptom_cols)
+    output_cols = ['Disease'] + symptom_cols + ['Age', 'HeartRate', 'SystolicBP', 'DiastolicBP']
+    return pd.DataFrame(synthetic_rows, columns=output_cols)
 
 
 def main():
     print("=" * 65)
-    print("  🧬 Synthetic Medical Data Generator")
+    print("  🧬 Synthetic Medical Data Generator (v2 — Vitals-Aware)")
     print("=" * 65)
 
     # 1. Load and prepare
@@ -236,6 +607,7 @@ def main():
     print("\n" + "=" * 65)
     print(f"✅ Done!")
     print(f"   Synthetic rows generated : {len(synthetic_df)}")
+    print(f"   Columns                  : {list(synthetic_df.columns[-4:])}")
     print(f"   Saved to                 : {OUTPUT_PATH}")
     print(f"\n📌 Next step: run train_model.py to merge and retrain.")
     print("=" * 65)

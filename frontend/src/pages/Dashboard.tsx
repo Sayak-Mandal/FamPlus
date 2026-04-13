@@ -8,6 +8,7 @@ import { useFamilyContext } from "@/app/family-context"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ManageCircleDialog } from "@/components/manage-circle-dialog"
 import { CircleInviteNotification } from "@/components/circle-invite-notification"
+import { UserOnboardingDialog } from "@/components/user-onboarding-dialog"
 
 export default function DashboardPage() {
     const location = useLocation()
@@ -32,15 +33,11 @@ export default function DashboardPage() {
         return <div className="p-8">Loading dashboard...</div>
     }
 
-    if (!primaryMember) {
-        return <div className="p-8">No family profile found. Please add a member.</div>
-    }
-
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <DashboardGreeting name={primaryMember.name || "User"} />
+                    <DashboardGreeting name={primaryMember?.name || "User"} />
                     <p className="text-muted-foreground">Here is your daily health overview.</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -58,17 +55,22 @@ export default function DashboardPage() {
                             ))}
                         </SelectContent>
                     </Select>
-                    <HealthCheckDialog familyMemberId={primaryMember.id || primaryMember._id} />
+                    {primaryMember && (
+                        <HealthCheckDialog familyMemberId={primaryMember.id || primaryMember._id} />
+                    )}
                 </div>
             </div>
 
-            <DashboardStatsGrid
-                key={primaryMember.id || primaryMember._id}
-                initialMember={primaryMember}
-                vitalsHistory={vitalsHistory}
-            />
+            {primaryMember && (
+                <DashboardStatsGrid
+                    key={primaryMember.id || primaryMember._id}
+                    initialMember={primaryMember}
+                    vitalsHistory={vitalsHistory}
+                />
+            )}
             
             {/* Popups & Notifications */}
+            <UserOnboardingDialog />
             <CircleInviteNotification />
         </div>
     )
