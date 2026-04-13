@@ -6,8 +6,9 @@ Famplus is a powerful, integrated health platform designed to help families stay
 
 ## ✨ Key Features
 
-### 🤖 1. AI-Powered Symptom Checker
+### 🤖 1. Vitals-Aware AI Symptom Checker
 - **Natural Language Processing (NLP)**: Describe symptoms in plain English (e.g., "I've been feeling dizzy and have a slight fever").
+- **Vitals-Aware Diagnostics**: The AI now incorporates your **Age, Heart Rate, and Blood Pressure** directly into its clinical reasoning for higher accuracy.
 - **Specialist Recommendations**: The AI identifies potential conditions and suggests the right type of doctor (e.g., Cardiologist, Dermatologist).
 - **"General Physician First" Philosophy**: Conservative thresholding ensures safe guidance, defaulting to a GP when symptoms are ambiguous.
 
@@ -17,6 +18,7 @@ Famplus is a powerful, integrated health platform designed to help families stay
 - **Wellness Scoring**: An AI-driven score that analyzes your vitals history to provide a holistic view of your current health status.
 
 ### 👨‍👩‍👧‍👦 3. Family Management
+- **Seamless Onboarding**: A smart dialogue box for first-time users ensures your primary health profile (including age and baseline vitals) is set up correctly.
 - **Centralized Profiles**: Manage health data for multiple family members from a single account.
 - **Personalized Avatars**: Custom cartoon-style avatars for each member.
 - **Health History**: Securely log and retrieve historical symptom analyses and vital records.
@@ -33,7 +35,7 @@ Famplus is a powerful, integrated health platform designed to help families stay
 | :--- | :--- |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS, Recharts, Lucide Icons, Leaflet |
 | **Backend** | Node.js, Express, MongoDB (Mongoose), Axios |
-| **AI Engine** | Python 3.x, FastAPI, Scikit-learn (Bernoulli Naive Bayes), Pandas, Joblib |
+| **AI Engine** | Python 3.x, FastAPI, Scikit-learn (HistGradientBoosting), Pandas, Joblib |
 | **DevOps** | Docker, Dotenv |
 
 ---

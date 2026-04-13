@@ -24,10 +24,10 @@ Famplus/
 │   │   └── main.tsx        # React mounting point
 │   ├── public/             # Static assets (images, icons)
 │   └── package.json        # Frontend dependencies & Vite config
-├── server/                 # Python AI Inference Engine
+├── server/                 # Python AI Inference Engine (Vitals-Aware)
 │   ├── ai_engine.py        # FastAPI server & NLP pre-processing layer
-│   ├── train_model.py      # ML Training pipeline (Scikit-learn)
-│   ├── generate_synthetic_data.py # Dataset generation for local training
+│   ├── train_model.py      # ML Training pipeline (Ensemble Gradient Boosting)
+│   ├── generate_synthetic_data.py # Dataset generation for local training (Vitals included)
 │   ├── model.joblib        # Serialized ML model weights
 │   ├── metadata.joblib     # Model vocabulary and label mappings
 │   └── requirements.txt    # Python dependencies
@@ -55,7 +55,7 @@ A high-performance React application built with Vite. It features:
 ### 3. `server/` (The Intelligence)
 A Python microservice powered by FastAPI. Its core functions are:
 - **NLP Processing**: Mapping free-form text symptoms to structured medical data.
-- **Machine Learning**: Running inference via a Bernoulli Naive Bayes classifier to identify conditions.
+- **Machine Learning**: Running inference via a **HistGradientBoosting** classifier to identify conditions, uniquely aware of the patient's individual vitals context (age, heart rate, BP).
 - **Safety Rails**: Implementing a "General Physician First" logic to ensure conservative and safe medical guidance.
 
 ---
