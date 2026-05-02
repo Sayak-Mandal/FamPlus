@@ -29,9 +29,30 @@ import pandas as pd
 import numpy as np
 import joblib
 import os
+import re
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="Famplus AI Engine", version="3.0")
+# ── SciSpacy Medical NLP ───────────────────────────────────────────────────────
+# SciSpacy provides a biomedical NLP pipeline (Named Entity Recognition) that
+# understands clinical text far better than keyword matching alone.
+# The en_core_sci_sm model (~15MB in RAM) recognizes medical entities like
+# "chest pain", "shortness of breath", "nausea" directly from natural language.
+import spacy
+from thefuzz import fuzz
+
+try:
+    nlp_med = spacy.load("en_core_sci_sm")
+    print("✅ SciSpacy medical NLP model loaded (en_core_sci_sm)")
+except OSError:
+    nlp_med = None
+    print(
+        "⚠️  SciSpacy model 'en_core_sci_sm' not found. "
+        "Falling back to alias-only matching. Install with:\n"
+        "   pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/"
+        "releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz"
+    )
+
+app = FastAPI(title="Famplus AI Engine", version="4.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
 # Allow all origins for the internal Famplus frontend
@@ -93,6 +114,201 @@ SCARY_DISEASES: Dict[str, List[str]] = {
     'Coma':                         ['altered_sensorium', 'coma'],
 }
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  EMERGENCY HALLMARK OVERRIDES
+#  When a user presents definitive clinical markers for a life-threatening
+#  condition, the safety gate is BYPASSED entirely. This prevents the scenario
+#  where true emergencies (e.g., crushing chest pain + left arm pain) get
+#  downgraded to "Typhoid 9%" because the model's confidence is low.
+#
+#  Each override requires:
+#    - definitive_markers: Symptoms that are highly specific to this emergency
+#    - supporting_markers: Symptoms that are common in this emergency
+#    - min_definitive:     Minimum # of definitive markers required
+#    - min_total:          Minimum # of total markers (definitive + supporting)
+#    - override_confidence: The confidence % to force when the override fires
+# ══════════════════════════════════════════════════════════════════════════════
+EMERGENCY_OVERRIDES: Dict[str, dict] = {
+    # ── Cardiac Emergency ─────────────────────────────────────────────────
+    'Heart attack': {
+        'definitive_markers': [
+            'crushing_chest_pain', 'left_arm_pain', 'jaw_pain',
+            'cold_sweat', 'sudden_chest_pain', 'chest_tightness',
+        ],
+        'supporting_markers': [
+            'chest_pain', 'breathlessness', 'palpitations',
+            'fast_heart_rate', 'sweating', 'nausea', 'vomiting',
+        ],
+        'min_definitive': 1,   # Need at least 1 hallmark cardiac symptom
+        'min_total':      2,   # Plus at least 1 more supporting symptom
+        'override_confidence': 85,
+    },
+
+    # ── Stroke / Brain Hemorrhage ─────────────────────────────────────────
+    'Paralysis (brain hemorrhage)': {
+        'definitive_markers': [
+            'weakness_of_one_body_side', 'slurred_speech',
+            'altered_sensorium',
+        ],
+        'supporting_markers': [
+            'loss_of_balance', 'headache', 'vomiting',
+            'blurred_and_distorted_vision', 'dizziness',
+        ],
+        'min_definitive': 1,
+        'min_total':      2,
+        'override_confidence': 85,
+    },
+
+    # ── Dengue Hemorrhagic ────────────────────────────────────────────────
+    'Dengue': {
+        'definitive_markers': [
+            'pain_behind_the_eyes', 'red_spots_over_body',
+        ],
+        'supporting_markers': [
+            'high_fever', 'joint_pain', 'muscle_pain',
+            'nausea', 'vomiting', 'fatigue', 'skin_rash',
+        ],
+        'min_definitive': 1,
+        'min_total':      3,   # Dengue needs more evidence (fever + eye pain + skin)
+        'override_confidence': 80,
+    },
+
+    # ── Malaria ───────────────────────────────────────────────────────────
+    'Malaria': {
+        'definitive_markers': [
+            'shivering', 'chills',
+        ],
+        'supporting_markers': [
+            'high_fever', 'sweating', 'headache', 'nausea',
+            'vomiting', 'muscle_pain', 'fatigue',
+        ],
+        'min_definitive': 1,
+        'min_total':      3,   # High fever + chills + sweating = classic triad
+        'override_confidence': 78,
+    },
+
+    # ── Tuberculosis ─────────────────────────────────────────────────────
+    'Tuberculosis': {
+        'definitive_markers': [
+            'blood_in_sputum', 'rusty_sputum',
+        ],
+        'supporting_markers': [
+            'cough', 'chest_pain', 'high_fever', 'fatigue',
+            'weight_loss', 'breathlessness', 'phlegm',
+        ],
+        'min_definitive': 1,
+        'min_total':      3,
+        'override_confidence': 80,
+    },
+
+    # ── Pneumonia ─────────────────────────────────────────────────────────
+    'Pneumonia': {
+        'definitive_markers': [
+            'rusty_sputum', 'blood_in_sputum',
+        ],
+        'supporting_markers': [
+            'high_fever', 'breathlessness', 'cough', 'chest_pain',
+            'phlegm', 'chills', 'fatigue', 'sweating',
+        ],
+        'min_definitive': 0,   # Pneumonia doesn't have unique-only markers
+        'min_total':      4,   # Needs a strong cluster: fever + breathless + cough + chest pain
+        'override_confidence': 75,
+    },
+
+    # ── Hepatitis B ───────────────────────────────────────────────────────
+    'Hepatitis B': {
+        'definitive_markers': [
+            'receiving_blood_transfusion', 'receiving_unsterile_injections',
+        ],
+        'supporting_markers': [
+            'yellowing_of_eyes', 'yellowish_skin', 'dark_urine',
+            'fatigue', 'loss_of_appetite', 'nausea', 'abdominal_pain',
+        ],
+        'min_definitive': 1,
+        'min_total':      2,
+        'override_confidence': 78,
+    },
+
+    # ── Diabetic Emergency (Hypoglycemia) ─────────────────────────────────
+    'Hypoglycemia': {
+        'definitive_markers': [
+            'irregular_sugar_level',
+        ],
+        'supporting_markers': [
+            'sweating', 'dizziness', 'palpitations', 'fatigue',
+            'anxiety', 'blurred_and_distorted_vision', 'shivering',
+            'altered_sensorium', 'loss_of_balance',
+        ],
+        'min_definitive': 1,
+        'min_total':      3,
+        'override_confidence': 78,
+    },
+
+    # ── Severe Asthma Attack ──────────────────────────────────────────────
+    'Bronchial Asthma': {
+        'definitive_markers': [
+            'breathlessness',
+        ],
+        'supporting_markers': [
+            'cough', 'chest_pain', 'phlegm', 'fatigue',
+            'high_fever', 'fast_heart_rate',
+        ],
+        'min_definitive': 1,
+        'min_total':      3,   # Breathless + cough + chest tightness
+        'override_confidence': 75,
+    },
+}
+
+
+def check_emergency_override(valid_features: List[str]) -> Optional[dict]:
+    """Checks if the user's symptoms match any Emergency Override pattern.
+
+    This is the critical safety net that ensures true emergencies are never
+    suppressed by the conservative safety gates. It runs BEFORE the scary
+    disease confidence threshold check (Step 8).
+
+    Args:
+        valid_features: List of recognized symptom tokens from user input.
+
+    Returns:
+        A dict with 'disease', 'confidence', and 'matched_markers' if an
+        override fires, or None if no emergency pattern is matched.
+    """
+    best_match: Optional[dict] = None
+    best_total_markers = 0
+
+    for disease, config in EMERGENCY_OVERRIDES.items():
+        definitive = config['definitive_markers']
+        supporting = config['supporting_markers']
+
+        matched_definitive = [m for m in definitive if m in valid_features]
+        matched_supporting = [m for m in supporting if m in valid_features]
+        n_definitive = len(matched_definitive)
+        n_total      = n_definitive + len(matched_supporting)
+
+        # Must meet both thresholds to fire the override
+        if n_definitive >= config['min_definitive'] and n_total >= config['min_total']:
+            # Pick the override with the strongest evidence (most matched markers)
+            if n_total > best_total_markers:
+                best_total_markers = n_total
+                best_match = {
+                    'disease':          disease,
+                    'confidence':       config['override_confidence'],
+                    'matched_markers':  matched_definitive + matched_supporting,
+                    'n_definitive':     n_definitive,
+                    'n_total':          n_total,
+                }
+
+    if best_match:
+        print(
+            f"🚨 EMERGENCY OVERRIDE: {best_match['disease']} "
+            f"(definitive={best_match['n_definitive']}, total={best_match['n_total']}, "
+            f"markers={best_match['matched_markers']})"
+        )
+
+    return best_match
+
+
 # Minimum model confidence required before showing a scary disease name.
 # Below this, the scary disease is replaced with its fallback.
 SCARY_CONFIDENCE_THRESHOLD = 0.72   # 72% — lowered from 82% after clinical data expansion
@@ -100,6 +316,10 @@ SCARY_CONFIDENCE_THRESHOLD = 0.72   # 72% — lowered from 82% after clinical da
 # Penalty multiplier applied to scary disease probabilities when markers are absent.
 # 0.03 = drastically reduce its probability so a common disease wins instead.
 SCARY_PENALTY_MULTIPLIER   = 0.03
+
+# Boost multiplier applied to scary diseases when their markers ARE present.
+# This helps counteract the diluted model signal from noisy training data.
+MARKER_PRESENT_BOOST = 3.5
 
 # Diseases that are common/benign and should be preferred in ambiguous cases.
 # These get a mild boost to edge out scary false positives.
@@ -745,14 +965,98 @@ SYMPTOM_ALIASES: Dict[str, str] = {
 }
 
 
-def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> List[str]:
-    """Advanced NLP symptom extractor that understands natural language sentences.
+# ══════════════════════════════════════════════════════════════════════════════
+#  SciSpacy-Powered Symptom Extraction Helpers
+# ══════════════════════════════════════════════════════════════════════════════
 
-    This function performs a tiered matching strategy:
-    1. Sanitization: Lowercasing and removing punctuation.
-    2. Phrase Matching: Checks for multi-word symptoms ('chest pain') via trigrams and bigrams.
-    3. Token Matching: Checks individual words against the known vocabulary and aliases.
-    4. Fallback: Splits by separators (commas, 'and') to catch manually typed lists.
+# Minimum fuzzy-match score (0–100) for a SciSpacy entity to be accepted.
+# 75 is a sweet spot: catches "chest tightness" → "chest_pain" but rejects
+# completely unrelated words like "breakfast" → "breathlessness".
+FUZZY_MATCH_THRESHOLD = 75
+
+# Pre-build a reverse lookup: model_token → human-readable form
+# e.g. "chest_pain" → "chest pain" for fuzzy comparison against SciSpacy entities
+def _build_fuzzy_targets(known_symptoms: Optional[List[str]] = None) -> Dict[str, str]:
+    """Builds a lookup of { human_readable_form: model_token } for fuzzy matching.
+
+    Combines the known model vocabulary AND all SYMPTOM_ALIASES keys into a
+    single dictionary so that fuzzy matching covers both canonical symptom
+    names and their conversational aliases.
+
+    Args:
+        known_symptoms: The model's trained symptom vocabulary list.
+
+    Returns:
+        Dict mapping human-readable strings to their model token equivalents.
+    """
+    targets: Dict[str, str] = {}
+    # From model vocabulary: "chest_pain" → target "chest pain" → maps to "chest_pain"
+    if known_symptoms:
+        for s in known_symptoms:
+            readable = s.replace('_', ' ')
+            targets[readable] = s
+    # From aliases: "crushing chest pain" → maps to "crushing_chest_pain"
+    for alias_key, alias_val in SYMPTOM_ALIASES.items():
+        targets[alias_key] = alias_val
+    return targets
+
+
+def _fuzzy_match_entity(
+    entity_text: str,
+    fuzzy_targets: Dict[str, str],
+    threshold: int = FUZZY_MATCH_THRESHOLD,
+) -> Optional[str]:
+    """Fuzzy-matches a SciSpacy entity against the known symptom vocabulary.
+
+    Uses token_sort_ratio which handles word-order differences:
+    e.g. "pain in chest" matches "chest pain" with high confidence.
+
+    Args:
+        entity_text: The extracted entity text from SciSpacy (lowercased).
+        fuzzy_targets: The { human_readable: model_token } dictionary.
+        threshold: Minimum score (0–100) for a match to be accepted.
+
+    Returns:
+        The model token string if a match is found, otherwise None.
+    """
+    best_score = 0
+    best_token = None
+
+    for target_text, model_token in fuzzy_targets.items():
+        score = fuzz.token_sort_ratio(entity_text, target_text)
+        if score > best_score:
+            best_score = score
+            best_token = model_token
+
+    if best_score >= threshold:
+        return best_token
+    return None
+
+
+def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> List[str]:
+    """SciSpacy-powered NLP symptom extractor with multi-layer fallback.
+
+    This function uses a 4-layer strategy to maximize symptom recognition:
+
+    Layer 1 — SciSpacy Medical NER:
+        Passes the raw text through a biomedical NLP pipeline that identifies
+        clinical entities (diseases, symptoms, body parts) using contextual
+        understanding. Each entity is then fuzzy-matched to our internal
+        symptom vocabulary. This handles complex phrasing like "I've been
+        dealing with a pounding sensation in my head" → headache.
+
+    Layer 2 — SYMPTOM_ALIASES Dictionary (Phrase Matching):
+        Runs the existing n-gram window approach to catch exact matches
+        against the curated alias dictionary. This is the safety net for
+        known phrases that SciSpacy might not extract as entities.
+
+    Layer 3 — Single Token + Vocabulary Matching:
+        Checks individual words against the model's known vocabulary and
+        alias keys for direct hits.
+
+    Layer 4 — Comma/And-Split Fallback:
+        If nothing was found, splits by separators and retries. Handles
+        manually typed lists like "itching, skin rash, fever".
 
     Args:
         text: The raw user input string (e.g., "I have a sharp chest pain and cough").
@@ -761,22 +1065,60 @@ def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> Li
     Returns:
         A list of recognized symptom tokens (e.g., ['chest_pain', 'cough']).
     """
-    # ── 1. Clean: lowercase, remove punctuation, collapse whitespace ──────────
-    import re
+    # ── 0. Clean: lowercase, remove punctuation, collapse whitespace ──────────
     cleaned = re.sub(r"[^\w\s]", " ", text.lower())
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
-    # Tokenize
+    found: list[str] = []
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  LAYER 1: SciSpacy Medical Named Entity Recognition
+    # ══════════════════════════════════════════════════════════════════════════
+    if nlp_med is not None:
+        fuzzy_targets = _build_fuzzy_targets(known_symptoms)
+        doc = nlp_med(cleaned)
+
+        for ent in doc.ents:
+            ent_text = ent.text.strip().lower()
+            if len(ent_text) < 3:  # Skip very short entities (noise)
+                continue
+
+            # 1a. Check if the entity text is a direct alias key
+            if ent_text in SYMPTOM_ALIASES:
+                mapped = SYMPTOM_ALIASES[ent_text]
+                if mapped not in found:
+                    found.append(mapped)
+                    print(f"  🧠 SciSpacy → alias match: '{ent_text}' → {mapped}")
+                continue
+
+            # 1b. Check if the entity text (underscored) is in known vocabulary
+            ent_underscored = ent_text.replace(' ', '_').replace('-', '_')
+            if known_symptoms and ent_underscored in known_symptoms:
+                if ent_underscored not in found:
+                    found.append(ent_underscored)
+                    print(f"  🧠 SciSpacy → vocab match: '{ent_text}' → {ent_underscored}")
+                continue
+
+            # 1c. Fuzzy match the entity against our full vocabulary
+            fuzzy_result = _fuzzy_match_entity(ent_text, fuzzy_targets)
+            if fuzzy_result and fuzzy_result not in found:
+                found.append(fuzzy_result)
+                print(f"  🧠 SciSpacy → fuzzy match: '{ent_text}' → {fuzzy_result}")
+
+        if found:
+            print(f"  🧠 SciSpacy extracted {len(found)} symptoms from NER")
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  LAYER 2: SYMPTOM_ALIASES Phrase Matching (n-gram window)
+    #  Runs regardless of SciSpacy results to catch aliases the NER missed.
+    # ══════════════════════════════════════════════════════════════════════════
     tokens = cleaned.split()
+    used_indices: set = set()
 
-    found: list[str]    = []
-    used_indices: set   = set()  # track consumed token positions to avoid double-matching
-
-    # ── 2. Multi-word phrase matching (5-gram to bigram) ───────────────────
     for window in (5, 4, 3, 2):
         for i in range(len(tokens) - window + 1):
             if any(j in used_indices for j in range(i, i + window)):
-                continue  # skip if any token already consumed
+                continue
             phrase = " ".join(tokens[i : i + window])
             if phrase in SYMPTOM_ALIASES:
                 mapped = SYMPTOM_ALIASES[phrase]
@@ -785,10 +1127,12 @@ def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> Li
                 for j in range(i, i + window):
                     used_indices.add(j)
 
-    # ── 3 & 4. Single-token matching ─────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════════
+    #  LAYER 3: Single-Token Matching
+    # ══════════════════════════════════════════════════════════════════════════
     for i, token in enumerate(tokens):
         if i in used_indices:
-            continue  # already consumed in a phrase match
+            continue
         if token in STOPWORDS:
             continue
 
@@ -817,8 +1161,9 @@ def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> Li
             used_indices.add(i)
             continue
 
-    # ── 5. Fallback: also try the old comma/and splitting for typed lists ──────
-    # Handles "itching, skin rash, fever" style input when NLP finds nothing
+    # ══════════════════════════════════════════════════════════════════════════
+    #  LAYER 4: Fallback — comma/and splitting for typed lists
+    # ══════════════════════════════════════════════════════════════════════════
     if not found:
         parts = re.split(r"[,;]|\band\b", cleaned)
         for p in parts:
@@ -864,16 +1209,22 @@ def apply_conservative_adjustments(
         if disease in COMMON_DISEASES:
             adjusted[i] *= COMMON_BOOST_MULTIPLIER
 
-        # ── Penalize scary diseases unless markers are present ─────────────────
+        # ── Scary disease handling ─────────────────────────────────────────────
         if disease in SCARY_DISEASES:
             required_markers = SCARY_DISEASES[disease]
-            # User must provide at least ONE of the disease's critical markers
-            user_has_marker  = any(m in valid_features for m in required_markers)
+            matched_markers  = [m for m in required_markers if m in valid_features]
+            n_matched        = len(matched_markers)
 
-            if not user_has_marker:
-                # Drastically reduce probability — a scary disease without ANY
-                # of its hallmark symptoms is almost certainly a false positive
+            if n_matched == 0:
+                # No markers at all → drastically penalize (false positive suppression)
                 adjusted[i] *= SCARY_PENALTY_MULTIPLIER
+            elif n_matched >= 2:
+                # Multiple hallmark markers present → strong boost to counteract
+                # the diluted model signal from noisy training data
+                adjusted[i] *= MARKER_PRESENT_BOOST
+            elif n_matched == 1:
+                # Single marker → moderate boost (could be relevant, stay cautious)
+                adjusted[i] *= (MARKER_PRESENT_BOOST * 0.5)
 
     # Re-normalize so all probabilities still sum to 1.0
     total = np.sum(adjusted)
@@ -1297,9 +1648,15 @@ def predict_symptoms(data: SymptomRequest):
             le             = le,
         )
 
-    # ── Step 5b: Sparse Input Adjustments ─────────────────────────────────────
+    # ── Step 5b: Emergency Override Check ───────────────────────────────────────
+    # CRITICAL: Before applying sparse-input penalties that could bury an
+    # emergency, check if definitive clinical markers trigger an override.
+    emergency_override = check_emergency_override(valid_features)
+
+    # ── Step 5c: Sparse Input Adjustments ─────────────────────────────────────
     # When few symptoms are provided, boost common diseases and penalize
     # scary diseases more aggressively to avoid alarming false positives.
+    # BUT: Skip the sparse penalty for scary diseases when an emergency override fired.
     # Vitals-derived evidence counts toward the symptom count.
     n_symptoms = len(valid_features) + vitals_evidence
     if n_symptoms <= 2:
@@ -1307,6 +1664,9 @@ def predict_symptoms(data: SymptomRequest):
             if disease in COMMON_DISEASES:
                 adjusted_probs[i] *= SPARSE_INPUT_COMMON_BOOST
             if disease in SCARY_DISEASES:
+                # Don't penalize the overridden disease — it has definitive markers
+                if emergency_override and disease == emergency_override['disease']:
+                    continue
                 adjusted_probs[i] *= (0.01 if n_symptoms == 1 else 0.05)
         total = np.sum(adjusted_probs)
         if total > 0:
@@ -1329,16 +1689,67 @@ def predict_symptoms(data: SymptomRequest):
 
     # ── Step 7b: Symptom Count Confidence Cap ─────────────────────────────────
     # Hard-cap confidence when only 1-2 symptoms are provided
-    if n_symptoms == 1:
-        primary_confidence = min(primary_confidence, SINGLE_SYMPTOM_MAX_CONFIDENCE)
-        confidence_pct = min(confidence_pct, int(SINGLE_SYMPTOM_MAX_CONFIDENCE * 100))
-    elif n_symptoms == 2:
-        primary_confidence = min(primary_confidence, FEW_SYMPTOMS_MAX_CONFIDENCE)
-        confidence_pct = min(confidence_pct, int(FEW_SYMPTOMS_MAX_CONFIDENCE * 100))
+    # BUT: Skip the cap if emergency override fired (definitive markers = real evidence)
+    if not emergency_override:
+        if n_symptoms == 1:
+            primary_confidence = min(primary_confidence, SINGLE_SYMPTOM_MAX_CONFIDENCE)
+            confidence_pct = min(confidence_pct, int(SINGLE_SYMPTOM_MAX_CONFIDENCE * 100))
+        elif n_symptoms == 2:
+            primary_confidence = min(primary_confidence, FEW_SYMPTOMS_MAX_CONFIDENCE)
+            confidence_pct = min(confidence_pct, int(FEW_SYMPTOMS_MAX_CONFIDENCE * 100))
+
+    # ── Step 7c: Emergency Override Activation ────────────────────────────────
+    # If the override fired, force the emergency disease as the final result
+    # regardless of what the model predicted. This is the nuclear option for
+    # patient safety — definitive markers should NEVER be ignored.
+    if emergency_override:
+        override_disease    = emergency_override['disease']
+        override_confidence = emergency_override['confidence']
+        specialist = metadata['specialist_map'].get(override_disease, FALLBACK_SPECIALIST)
+
+        # Format markers for readability
+        formatted_markers = [marker.replace('_', ' ') for marker in emergency_override['matched_markers'][:3]]
+        markers_str = " and ".join(formatted_markers) if len(formatted_markers) == 2 else ", ".join(formatted_markers)
+
+        advice = (
+            f"⚠️ URGENT: Your symptoms strongly indicate a potential medical emergency. "
+            f"The presence of {markers_str} is a significant clinical indicator for {override_disease}. "
+            f"Please proceed to an emergency department or consult a {specialist} immediately. "
+            f"Do not delay in seeking professional medical evaluation."
+        )
+
+        description = metadata['description_map'].get(override_disease, "No description available.")
+        precautions = [p.capitalize() for p in metadata['precaution_map'].get(override_disease, [])]
+
+        # Force the override disease into top_matches at position 0
+        override_top_matches = [TopMatch(condition=override_disease, confidence=override_confidence)]
+        # Keep other predictions as secondary context
+        for tm in top_matches:
+            if tm.condition != override_disease and len(override_top_matches) < 3:
+                override_top_matches.append(tm)
+
+        return SymptomResponse(
+            condition       = override_disease,
+            confidence      = override_confidence,
+            advice          = advice,
+            specialist      = specialist,
+            description     = description,
+            precautions     = precautions,
+            urgency         = "Emergency",
+            top_matches     = override_top_matches,
+            next_steps      = [
+                "🚨 Seek emergency medical attention immediately",
+                "Call emergency services or go to the nearest hospital",
+                "Do not drive yourself — have someone take you",
+                "Note symptom onset time for the treating physician",
+            ],
+            vitals_analysis = vitals_analysis,
+        )
 
     # ── Step 8: Scary Disease Final Gate ──────────────────────────────────────
     # Even after adjustment, if confidence is still below the high threshold
     # for a scary disease, we fall back to the 2nd prediction or a safe default.
+    # NOTE: If an emergency override fired, we never reach this point.
     is_scary = primary_disease in SCARY_DISEASES
 
     if is_scary and primary_confidence < SCARY_CONFIDENCE_THRESHOLD:

@@ -120,9 +120,10 @@ def train_model():
             if vc in df_clinical.columns:
                 keep_cols.append(vc)
         df_clinical = df_clinical[[c for c in keep_cols if c in df_clinical.columns]]
-        # Repeat each clinical row 8× to give it comparable weight to real data
-        df_clinical = pd.concat([df_clinical] * 8, ignore_index=True)
-        print(f"   Clinical data rows   : {len(df_clinical)} (8x weighted)")
+        # Repeat each clinical row 15× to give red-flag conditions strong weight
+        # (increased from 8× to improve emergency condition detection accuracy)
+        df_clinical = pd.concat([df_clinical] * 15, ignore_index=True)
+        print(f"   Clinical data rows   : {len(df_clinical)} (15x weighted)")
         frames.append(df_clinical)
     else:
         print("   ⚠️  Clinical data not found — skipping curated rows.")
