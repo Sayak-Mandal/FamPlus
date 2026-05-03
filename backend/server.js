@@ -1,11 +1,14 @@
 /**
- * Famplus Express Backend
- * -----------------------
- * Main API entry point for the Famplus application. Responsible for:
- * 1. User Authentication (JWT-less, Header-based simplified auth)
- * 2. Family Member & Vitals Profile Management
- * 3. Orchestrating calls to the Python AI engine for medical analysis.
+ * 🚀 Famplus Backend Orchestrator (v4.0)
+ * ------------------------------------------------------------------------------
+ * Main API Gateway and Data Orchestration Layer.
+ * Handles Authentication, Family Circle Management, and proxies requests to 
+ * the Python AI Intelligence layer.
+ * 
+ * @module server.js
+ * @author Sayak Mandal
  */
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -59,9 +62,14 @@ mongoose.connect(MONGODB_URI, {
     dbConnected = false;
   });
 
+// ==============================================================================
+# SECTION: SYSTEM INITIALIZATION & SEEDING
+// ==============================================================================
+
 /**
- * Bootstraps a demo account with rich historical data for presentations/hackathons.
- * Creates a circle, multiple family members, and 7 days of vitals/symptoms.
+ * Bootstraps the application with a high-fidelity demo environment.
+ * Generates historical vitals, symptoms, and family members for a 'Doe Family' 
+ * scenario, enabling immediate visualization of 'Guardian Technology'.
  */
 async function seedDemoUser() {
   try {
@@ -497,17 +505,20 @@ app.delete('/api/vitals/:logId', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * SYMPTOM ANALYSIS LOGIC
- * Intersects with the Python AI Engine to provide medical guidance.
- */
+// ==============================================================================
+# SECTION: AI ENGINE INTEGRATION (INFERENCE PROXIES)
+// ==============================================================================
 
-// Analyze symptoms and persist results to historical log
+/**
+ * Symptom Analysis Orchestrator.
+ * 1. Accepts user symptoms.
+ * 2. Proxies request to the Python Inference Engine (FastAPI).
+ * 3. Maps predicted results to severity levels and persists to MongoDB history.
+ */
 app.post('/api/family/:memberId/analyze-symptoms', requireAuth, async (req, res) => {
   try {
     const { symptoms } = req.body;
     if (!symptoms) return res.status(400).json({ error: 'Symptoms are required' });
-
     // Orchestration: Call Python AI engine for inference
     const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms });
     const { condition, confidence, advice, specialist } = aiRes.data;

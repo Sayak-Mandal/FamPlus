@@ -1,74 +1,72 @@
-# 🏥 Famplus - Family Health Tracker
+# 🏥 Famplus — Proactive S-Tier Family Healthcare
 
-Famplus is a powerful, integrated health platform designed to help families stay ahead of their medical needs. By combining a modern **MERN stack** (MongoDB, Express, React, Node) with a specialized **Python AI engine**, Famplus offers proactive diagnostics, vitals tracking, and care discovery in one seamless interface.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Tech Stack](https://img.shields.io/badge/Stack-MERN%20+%20Python%20AI-success)](./structure.md)
 
----
-
-## ✨ Key Features
-
-### 🤖 1. Vitals-Aware AI Symptom Checker
-- **Natural Language Processing (NLP)**: Describe symptoms in plain English (e.g., "I've been feeling dizzy and have a slight fever").
-- **Vitals-Aware Diagnostics**: The AI now incorporates your **Age, Heart Rate, and Blood Pressure** directly into its clinical reasoning for higher accuracy.
-- **Specialist Recommendations**: The AI identifies potential conditions and suggests the right type of doctor (e.g., Cardiologist, Dermatologist).
-- **"General Physician First" Philosophy**: Conservative thresholding ensures safe guidance, defaulting to a GP when symptoms are ambiguous.
-
-### 📊 2. Vitals & Wellness Dashboard
-- **Real-time Tracking**: Monitor Weight, Height, Heart Rate, and Hydration.
-- **Interactive Analytics**: Visualize health trends over time using dynamic charts.
-- **Wellness Scoring**: An AI-driven score that analyzes your vitals history to provide a holistic view of your current health status.
-
-### 👨‍👩‍👧‍👦 3. Family Management
-- **Seamless Onboarding**: A smart dialogue box for first-time users ensures your primary health profile (including age and baseline vitals) is set up correctly.
-- **Centralized Profiles**: Manage health data for multiple family members from a single account.
-- **Personalized Avatars**: Custom cartoon-style avatars for each member.
-- **Health History**: Securely log and retrieve historical symptom analyses and vital records.
-
-### 🗺️ 4. Care Discovery
-- **Doctor Matching**: Automatically finds doctors based on the AI's specialty recommendations.
-- **Interactive Maps**: Locate nearby clinics and hospitals using integrated mapping services.
+Famplus is a premium, high-performance health platform engineered for proactive family wellness. By fusing a cutting-edge **MERN stack** with a specialized **Medical AI engine**, Famplus delivers diagnostic precision, real-time vitals intelligence, and professional-grade reporting in a stunning, high-fidelity interface.
 
 ---
 
-## 🛠️ Technology Stack
+## 🚀 Vision: S-Tier Diagnostic Intelligence
 
-| Layer | Technologies |
+Famplus isn't just a tracker; it's a clinical-grade companion. Our latest version introduces **Guardian Technology**—a 3D-enhanced preventative layer that monitors family health trends with unprecedented depth.
+
+### 🧠 Advanced AI Ecosystem
+*   **SciSpacy NLP Pipeline**: Migrated from manual keyword mapping to automated biomedical entity extraction. The AI now understands complex medical terminology and conversational symptom descriptions.
+*   **Vitals-Aware Inference**: Our Gradient Boosting model doesn't just look at symptoms; it correlates them with real-time Age, Heart Rate, and Blood Pressure for high-fidelity clinical triage.
+*   **Technical Deep-Dive**: Explore our inference strategy and safety guardrails in [ai_architecture.md](server/ai_architecture.md).
+*   **Local Gemma3 LLM Backend**: Integrated local Large Language Model capabilities for deep clinical reasoning and contextual health advice without compromising privacy.
+*   **Vitals-Contextual Diagnostics**: Inference is uniquely aware of the patient's individual vitals (Age, Heart Rate, BP), biasing diagnostic probabilities based on real-time evidence.
+*   **Professional PDF Reporting**: Branded, clinical-ready PDF diagnostic reports generated directly from the dashboard for sharing with healthcare providers.
+
+### 🎨 Premium Design & UX
+*   **3D Guardian Landing Page**: An immersive Three.js-powered experience showcasing the "Guardian" preventative features.
+*   **Custom Physics Engine**: A lightweight 2D collision physics engine powers micro-interactions and animated CSS icons for a tactile, high-end feel.
+*   **Medical-Themed Auth UI**: A completely overhauled, branded authentication flow with smooth transitions and refined typography.
+*   **Responsive Analytics**: Interactive Recharts dashboards that visualize health data across all devices.
+
+---
+
+## 🛠️ High-Performance Technology Stack
+
+| Layer | Core Technologies |
 | :--- | :--- |
-| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS, Recharts, Lucide Icons, Leaflet |
-| **Backend** | Node.js, Express, MongoDB (Mongoose), Axios |
-| **AI Engine** | Python 3.x, FastAPI, Scikit-learn (HistGradientBoosting), Pandas, Joblib |
-| **DevOps** | Docker, Dotenv |
+| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, Three.js, Framer Motion, jspdf |
+| **Backend** | Node.js, Express, MongoDB (Mongoose), JWT Security |
+| **AI Engine** | Python 3.11, FastAPI, SciSpacy (en_core_sci_sm), Scikit-learn, Gemma3 |
+| **Mapping** | Google Maps Platform (Address-based routing), Leaflet |
 
 ---
 
-## 🚀 Quick Start
+## 📦 Quick Start
 
 ### 1. Prerequisites
-- **Node.js** (v18+)
-- **Python** (v3.9+)
-- **MongoDB** (Local instance or Atlas URI)
+- **Node.js** (v18+) & **Python** (v3.9+)
+- **MongoDB** (Local or Atlas)
+- **Google Maps API Key** (for Find Care features)
 
-### 2. Backend Setup (Node/Express)
+### 2. Backend Orchestrator
 ```bash
 cd backend
 npm install
-# Create a .env file (see Environment Variables section)
+# Configure .env with MONGO_URI, JWT_SECRET, and GOOGLE_MAPS_API_KEY
 npm start
 ```
 
-### 3. AI Engine Setup (Python/FastAPI)
+### 3. Medical AI Engine
 ```bash
 cd server
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
-# Generate mock training data and train the model
-python generate_synthetic_data.py
+# Download SciSpacy model
+pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
+# Initialize & Start
 python train_model.py
-# Start the server
 python ai_engine.py
 ```
 
-### 4. Frontend Setup (React/Vite)
+### 4. Frontend Experience
 ```bash
 cd frontend
 npm install
@@ -77,23 +75,11 @@ npm run dev
 
 ---
 
-## 🔐 Environment Variables
+## 📖 System Architecture
 
-Create a `.env` file in the **root** of the project:
-
-```env
-MONGO_URI=your_mongodb_connection_string
-PORT=5001
-JWT_SECRET=your_jwt_secret_key
-```
-
-*Note: The frontend is pre-configured to communicate with the backend on port `5001` and the AI Engine on port `8000` locally.*
+For a detailed breakdown of the file system and internal logic, please refer to the **[System Structure Guide](./structure.md)**.
 
 ---
 
-## 📖 Project Documentation
-For a detailed breakdown of the file system and project organization, please refer to [STRUCTURE.md](./structure.md).
+*Developed with ❤️ by Sayak Mandal. Built for the future of digital health.*
 
----
-
-*Developed with ❤️ for Proactive Family Healthcare.*

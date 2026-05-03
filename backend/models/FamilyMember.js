@@ -4,6 +4,15 @@
  * for storing a user's family members, including health metrics and relations.
  */
 
+/**
+ * 👨‍👩‍👧‍👦 FamilyMember Model
+ * ------------------------------------------------------------------------------
+ * Represents a specific individual within a user's health circle.
+ * Tracks demographic data (age, relation) and acts as the parent for 
+ * vitals and symptom logs.
+ * 
+ * @module FamilyMember
+ */
 const mongoose = require('mongoose');
 
 /**

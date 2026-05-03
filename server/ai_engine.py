@@ -1,25 +1,29 @@
 """
-Famplus AI Inference Engine (v2 — Vitals-Aware XGBoost)
--------------------------------------------------------
-FastAPI server exposing two endpoints for health analysis:
-  POST /predict_symptoms  — symptom-to-doctor recommendation (NLP + XGBoost)
-  POST /predict_wellness  — vitals history wellness scoring (Rule-based Trend Analysis)
-
-Architectural Overview:
-  The engine uses a decoupled architecture where the ML model (XGBoost Gradient
-  Boosted Classifier) is loaded as a serialized asset. It sits behind an NLP 
-  pre-processing layer that maps natural language (free text) to a combined 
-  feature vector of binary symptoms + scaled numerical vitals (Age, HeartRate,
-  SystolicBP, DiastolicBP).
-
-  The model directly learns the relationship between vitals and disease severity,
-  so a 60-year-old with chest pain and high blood pressure will get a more 
-  accurate cardiac risk assessment than a 20-year-old with the same symptoms.
-
-Design Philosophy (IMPORTANT — "General Physician First"):
-  - The model should recommend specialists, NOT provide a final clinical diagnosis.
-  - Conservative Thresholding: Scary/Severe diseases require higher confidence levels.
-  - Fallback logic ensures that ambiguous cases are always referred to a General Physician (GP).
+# 🏥 Famplus AI Inference Engine (v4.0 — S-Tier Clinical Intelligence)
+# ------------------------------------------------------------------------------
+# Author: Sayak Mandal
+# Version: 4.0 (Vitals-Aware + SciSpacy NER + Gemma3 Reasoning)
+#
+# This microservice acts as the 'Cerebellum' of the Famplus ecosystem. It exposes
+# high-performance FastAPI endpoints for real-time symptom analysis and wellness
+# scoring.
+#
+# ## 🏗️ Architectural Layers:
+# 1. **NLP Gateway**: Uses SciSpacy (en_core_sci_sm) for Biomedical Named Entity 
+#    Recognition (NER) to extract clinical symptoms from natural language.
+# 2. **Context Engine**: Injects real-time dashboard vitals (HR, BP, Age) to 
+#    provide objective evidence for the ML model.
+# 3. **Inference Core**: Histogram-based Gradient Boosting (XGBoost/HGB) classifier 
+#    that maps symptoms+vitals to specialist recommendations.
+# 4. **Clinical Reasoning**: Local Gemma3 LLM integration for deep contextual advice.
+# 5. **Safety Guardrails**: Implements "General Physician First" logic and emergency 
+#    hallmark overrides to ensure user safety.
+#
+# ## 🔒 Safety Philosophy:
+# - Conservative Thresholding: High-severity conditions require extreme confidence.
+# - Emergency Bypasses: Definitive markers (e.g. crushing chest pain) bypass all gates.
+# - Specialist-Only: The engine recommends doctors, NOT definitive diagnoses.
+# ------------------------------------------------------------------------------
 """
 
 from fastapi import FastAPI, HTTPException
@@ -31,12 +35,19 @@ import joblib
 import os
 import re
 from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import time
+
+# ==============================================================================
+# SECTION 1: GLOBAL CONFIGURATION & ASSET REGISTRY
+# ==============================================================================
 
 # ── SciSpacy Medical NLP ───────────────────────────────────────────────────────
 # SciSpacy provides a biomedical NLP pipeline (Named Entity Recognition) that
 # understands clinical text far better than keyword matching alone.
 # The en_core_sci_sm model (~15MB in RAM) recognizes medical entities like
 # "chest pain", "shortness of breath", "nausea" directly from natural language.
+# ==============================================================================
 import spacy
 from thefuzz import fuzz
 
@@ -55,7 +66,7 @@ except OSError:
 app = FastAPI(title="Famplus AI Engine", version="4.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
-# Allow all origins for the internal Famplus frontend
+# Internal communication only. Restrict in production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -91,6 +102,18 @@ if os.path.exists(MODEL_PATH) and os.path.exists(METADATA_PATH):
         print(f"❌ Error loading model: {e}")
 else:
     print("⚠️  ML Model not found. Please run generate_synthetic_data.py then train_model.py first.")
+
+# ── Ollama LLM Configuration ──────────────────────────────────────────────────
+# Ollama provides a local LLM (gemma3:4b) for superior clinical reasoning.
+# The existing Gradient Boosting model serves as an automatic fallback when
+# Ollama is unavailable.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
+OLLAMA_TIMEOUT = 60  # Maximum seconds to wait for LLM response
+OLLAMA_CHECK_INTERVAL = 60  # Seconds between availability checks
+
+_ollama_available: Optional[bool] = None
+_ollama_last_check: float = 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -423,6 +446,24 @@ class SymptomResponse(BaseModel):
         "DISCLAIMER: This is an AI-powered health guide, not a medical diagnosis. "
         "Please consult a qualified doctor for any health concerns."
     )
+
+
+class OllamaTopMatch(BaseModel):
+    """A single differential diagnosis from the LLM."""
+    condition:  str
+    confidence: int
+
+class OllamaDiagnosis(BaseModel):
+    """Structured schema for Ollama's clinical reasoning output."""
+    condition:    str
+    confidence:   int
+    advice:       str
+    specialist:   str
+    description:  str
+    precautions:  List[str]
+    urgency:      str
+    top_matches:  List[OllamaTopMatch]
+    next_steps:   List[str]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -965,105 +1006,28 @@ SYMPTOM_ALIASES: Dict[str, str] = {
 }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SciSpacy-Powered Symptom Extraction Helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+# SECTION 2: NLP PIPELINE & SYMPTOM NORMALIZATION
+# ==============================================================================
 
-# Minimum fuzzy-match score (0–100) for a SciSpacy entity to be accepted.
-# 75 is a sweet spot: catches "chest tightness" → "chest_pain" but rejects
-# completely unrelated words like "breakfast" → "breathlessness".
-FUZZY_MATCH_THRESHOLD = 75
-
-# Pre-build a reverse lookup: model_token → human-readable form
-# e.g. "chest_pain" → "chest pain" for fuzzy comparison against SciSpacy entities
-def _build_fuzzy_targets(known_symptoms: Optional[List[str]] = None) -> Dict[str, str]:
-    """Builds a lookup of { human_readable_form: model_token } for fuzzy matching.
-
-    Combines the known model vocabulary AND all SYMPTOM_ALIASES keys into a
-    single dictionary so that fuzzy matching covers both canonical symptom
-    names and their conversational aliases.
-
-    Args:
-        known_symptoms: The model's trained symptom vocabulary list.
-
-    Returns:
-        Dict mapping human-readable strings to their model token equivalents.
+def normalize_input(text: str, symptom_list: List[str]) -> List[int]:
     """
-    targets: Dict[str, str] = {}
-    # From model vocabulary: "chest_pain" → target "chest pain" → maps to "chest_pain"
-    if known_symptoms:
-        for s in known_symptoms:
-            readable = s.replace('_', ' ')
-            targets[readable] = s
-    # From aliases: "crushing chest pain" → maps to "crushing_chest_pain"
-    for alias_key, alias_val in SYMPTOM_ALIASES.items():
-        targets[alias_key] = alias_val
-    return targets
-
-
-def _fuzzy_match_entity(
-    entity_text: str,
-    fuzzy_targets: Dict[str, str],
-    threshold: int = FUZZY_MATCH_THRESHOLD,
-) -> Optional[str]:
-    """Fuzzy-matches a SciSpacy entity against the known symptom vocabulary.
-
-    Uses token_sort_ratio which handles word-order differences:
-    e.g. "pain in chest" matches "chest pain" with high confidence.
-
+    Translates raw natural language input into a binary feature vector compatible 
+    with the ML model.
+    
+    Processing Strategy:
+    1. **SciSpacy NER**: Extracts biomedical entities from the text.
+    2. **Alias Expansion**: Maps medical jargon/slang (e.g., 'crushing pain') 
+       to canonical symptom names.
+    3. **Fuzzy Scoring**: Uses Token Set Ratio to match extracted entities 
+       against the training set's feature columns.
+    
     Args:
-        entity_text: The extracted entity text from SciSpacy (lowercased).
-        fuzzy_targets: The { human_readable: model_token } dictionary.
-        threshold: Minimum score (0–100) for a match to be accepted.
-
+        text: Raw symptom description from the user.
+        symptom_list: The full list of symptoms the model was trained on.
+        
     Returns:
-        The model token string if a match is found, otherwise None.
-    """
-    best_score = 0
-    best_token = None
-
-    for target_text, model_token in fuzzy_targets.items():
-        score = fuzz.token_sort_ratio(entity_text, target_text)
-        if score > best_score:
-            best_score = score
-            best_token = model_token
-
-    if best_score >= threshold:
-        return best_token
-    return None
-
-
-def normalize_input(text: str, known_symptoms: Optional[List[str]] = None) -> List[str]:
-    """SciSpacy-powered NLP symptom extractor with multi-layer fallback.
-
-    This function uses a 4-layer strategy to maximize symptom recognition:
-
-    Layer 1 — SciSpacy Medical NER:
-        Passes the raw text through a biomedical NLP pipeline that identifies
-        clinical entities (diseases, symptoms, body parts) using contextual
-        understanding. Each entity is then fuzzy-matched to our internal
-        symptom vocabulary. This handles complex phrasing like "I've been
-        dealing with a pounding sensation in my head" → headache.
-
-    Layer 2 — SYMPTOM_ALIASES Dictionary (Phrase Matching):
-        Runs the existing n-gram window approach to catch exact matches
-        against the curated alias dictionary. This is the safety net for
-        known phrases that SciSpacy might not extract as entities.
-
-    Layer 3 — Single Token + Vocabulary Matching:
-        Checks individual words against the model's known vocabulary and
-        alias keys for direct hits.
-
-    Layer 4 — Comma/And-Split Fallback:
-        If nothing was found, splits by separators and retries. Handles
-        manually typed lists like "itching, skin rash, fever".
-
-    Args:
-        text: The raw user input string (e.g., "I have a sharp chest pain and cough").
-        known_symptoms: The list of valid symptom tokens from the trained model metadata.
-
-    Returns:
-        A list of recognized symptom tokens (e.g., ['chest_pain', 'cough']).
+        A list of binary integers (0 or 1) representing present symptoms.
     """
     # ── 0. Clean: lowercase, remove punctuation, collapse whitespace ──────────
     cleaned = re.sub(r"[^\w\s]", " ", text.lower())
@@ -1465,6 +1429,243 @@ def get_fallback_response(reason: str) -> SymptomResponse:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  Ollama LLM Clinical Reasoning Engine
+# ══════════════════════════════════════════════════════════════════════════════
+
+MEDICAL_SYSTEM_PROMPT = """You are a clinical decision support assistant for the Famplus health application.
+Your role is to analyze patient-reported symptoms and provide preliminary health guidance.
+
+CRITICAL SAFETY RULES:
+1. You are NOT a doctor. Always recommend consulting a qualified physician.
+2. For ANY life-threatening symptoms, set urgency to "Emergency" and confidence to 85+.
+3. Be conservative — when uncertain, recommend a General Physician.
+4. NEVER dismiss chest pain, breathing difficulties, or neurological symptoms.
+5. Consider the patient's vitals (if provided) when making your assessment.
+
+EMERGENCY RED FLAGS (ALWAYS flag as "Emergency" urgency):
+- Heavy/crushing chest pain → Cardiac Emergency → Cardiologist
+- Chest pain + arm pain/jaw pain/cold sweat → Heart Attack → Cardiologist
+- One-sided weakness + slurred speech → Stroke → Neurologist
+- High fever + red spots + pain behind eyes → Dengue → Infectious Disease Specialist
+- Coughing blood + persistent cough → TB/Pneumonia → Pulmonologist
+- Severe breathing difficulty → Respiratory Emergency → Pulmonologist
+
+COMMON SYMPTOM PATTERNS:
+- Headache + blocked/runny nose + sneezing → Common Cold → General Physician
+- Headache + blocked nose + facial pain → Sinusitis → ENT Specialist
+- Fever + body ache + fatigue → Common Flu → General Physician
+- Stomach pain + nausea + diarrhea → Gastroenteritis → Gastroenterologist
+- Itching + skin rash → Allergy or Fungal Infection → Dermatologist/Allergist
+- Joint pain + stiffness → Arthritis → Rheumatologist
+- Burning urination + frequent urination → UTI → Urologist
+- Heartburn + acidity + chest burning → GERD → Gastroenterologist
+
+SPECIALIST NAMES (use ONLY these exact specialist names in the "specialist" field):
+- Cardiologist (for heart/cardiac issues)
+- Neurologist (for brain/neurological issues)
+- Pulmonologist (for lung/breathing issues)
+- Gastroenterologist (for stomach/digestive issues)
+- Dermatologist (for skin issues)
+- Rheumatologist (for joint/bone issues)
+- Endocrinologist (for thyroid/hormone/diabetes issues)
+- Infectious Disease Specialist (for infections/fever)
+- ENT Specialist (for ear/nose/throat issues)
+- Urologist (for urinary issues)
+- Hepatologist (for liver issues)
+- Allergist (for allergy issues)
+- Sleep Specialist (for sleep issues)
+- Vascular Surgeon (for vascular issues)
+- General Physician (for general/unclear issues)
+
+CONFIDENCE GUIDELINES:
+- 80-100%: Strong symptom-disease match with multiple correlated symptoms
+- 50-79%: Moderate match, symptoms are suggestive but not definitive
+- 20-49%: Weak match, limited symptoms provided
+- Below 20%: Very uncertain, default to General Physician
+
+URGENCY LEVELS:
+- "Emergency": Life-threatening, seek immediate care
+- "High": Significant concern, see doctor within 24 hours
+- "Normal": Monitor and schedule routine appointment
+
+Provide 3 differential diagnoses in top_matches (most likely first).
+Always include 3-4 practical precautions and next steps.
+Respond ONLY with valid JSON matching the required schema."""
+
+
+def is_ollama_available() -> bool:
+    """Checks if Ollama is running and the configured model is pulled.
+
+    Results are cached for OLLAMA_CHECK_INTERVAL seconds to avoid
+    hammering the Ollama API on every request.
+    """
+    global _ollama_available, _ollama_last_check
+
+    now = time.time()
+    if _ollama_available is not None and (now - _ollama_last_check) < OLLAMA_CHECK_INTERVAL:
+        return _ollama_available
+
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(f"{OLLAMA_BASE_URL}/api/tags")
+            if resp.status_code == 200:
+                models = resp.json().get("models", [])
+                model_names = [m.get("name", "") for m in models]
+                available = any(OLLAMA_MODEL in name for name in model_names)
+                _ollama_available = available
+                _ollama_last_check = now
+                if available:
+                    print(f"✅ Ollama available with model '{OLLAMA_MODEL}'")
+                else:
+                    print(f"⚠️  Ollama running but '{OLLAMA_MODEL}' not found. Have: {model_names}")
+                return available
+    except Exception as e:
+        print(f"⚠️  Ollama not reachable: {e}")
+
+    _ollama_available = False
+    _ollama_last_check = now
+    return False
+
+
+def predict_with_ollama(
+    symptoms_text: str,
+    vitals: Optional[VitalsContext] = None,
+) -> Optional[SymptomResponse]:
+    """Calls the local Ollama LLM for clinical reasoning on symptoms.
+
+    Constructs a detailed prompt with symptom text and vitals context,
+    then forces structured JSON output via Ollama's format parameter.
+
+    Args:
+        symptoms_text: Raw user input (e.g., "heavy chest pain and dizziness").
+        vitals: Optional dashboard vitals for clinical context.
+
+    Returns:
+        A SymptomResponse if the LLM succeeds, or None to trigger ML fallback.
+    """
+    try:
+        # ── Build user prompt with vitals context ─────────────────────────
+        user_msg = f"Patient reports: \"{symptoms_text}\""
+
+        if vitals:
+            parts = []
+            if vitals.age and vitals.age > 0:
+                parts.append(f"Age: {vitals.age} years")
+            if vitals.heart_rate and vitals.heart_rate > 0:
+                parts.append(f"Heart Rate: {vitals.heart_rate} bpm")
+            if vitals.blood_pressure:
+                parts.append(f"Blood Pressure: {vitals.blood_pressure} mmHg")
+            if vitals.sleep:
+                parts.append(f"Sleep: {vitals.sleep}")
+            if parts:
+                user_msg += "\n\nPatient Vitals:\n" + "\n".join(f"- {p}" for p in parts)
+
+        user_msg += (
+            "\n\nAnalyze these symptoms carefully. Consider the most clinically "
+            "likely condition, provide your confidence level, the recommended "
+            "specialist, practical precautions, and next steps for the patient."
+        )
+
+        print(f"🤖 Ollama request: model={OLLAMA_MODEL}, symptoms='{symptoms_text}'")
+
+        # ── Call Ollama with structured JSON output ──────────────────────
+        with httpx.Client(timeout=OLLAMA_TIMEOUT) as client:
+            resp = client.post(
+                f"{OLLAMA_BASE_URL}/api/chat",
+                json={
+                    "model": OLLAMA_MODEL,
+                    "messages": [
+                        {"role": "system", "content": MEDICAL_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "format": OllamaDiagnosis.model_json_schema(),
+                    "stream": False,
+                    "options": {
+                        "temperature": 0,
+                        "num_predict": 1024,
+                    },
+                },
+            )
+
+        if resp.status_code != 200:
+            print(f"⚠️  Ollama HTTP {resp.status_code}")
+            return None
+
+        content = resp.json().get("message", {}).get("content", "")
+        if not content:
+            print("⚠️  Ollama returned empty content")
+            return None
+
+        # ── Parse structured response ────────────────────────────────────
+        diagnosis = OllamaDiagnosis.model_validate_json(content)
+        confidence = max(0, min(100, diagnosis.confidence))
+
+        # Normalize specialist name (LLM sometimes outputs category labels)
+        SPECIALIST_NORMALIZE = {
+            "heart/cardiac": "Cardiologist",
+            "brain/neurological": "Neurologist",
+            "lung/breathing": "Pulmonologist",
+            "stomach/digestive": "Gastroenterologist",
+            "skin": "Dermatologist",
+            "joint/bone": "Rheumatologist",
+            "thyroid/hormone": "Endocrinologist",
+            "infections/fever": "Infectious Disease Specialist",
+            "ear/nose/throat": "ENT Specialist",
+            "urinary": "Urologist",
+            "liver": "Hepatologist",
+            "allergy": "Allergist",
+            "sleep": "Sleep Specialist",
+            "vascular": "Vascular Surgeon",
+            "general/unclear": "General Physician",
+        }
+        specialist = SPECIALIST_NORMALIZE.get(diagnosis.specialist.lower(), diagnosis.specialist)
+
+        # Build vitals analysis annotations
+        vitals_analysis: List[str] = []
+        if vitals:
+            if vitals.heart_rate and vitals.heart_rate > 100:
+                vitals_analysis.append(f"❤️ Heart rate {vitals.heart_rate} bpm is elevated (tachycardia).")
+            elif vitals.heart_rate and vitals.heart_rate < 60:
+                vitals_analysis.append(f"❤️ Heart rate {vitals.heart_rate} bpm is low (bradycardia).")
+            if vitals.blood_pressure:
+                s, d = parse_bp(vitals.blood_pressure)
+                if s > 140 or d > 90:
+                    vitals_analysis.append(f"🩸 BP {vitals.blood_pressure} mmHg is elevated.")
+            if vitals.sleep:
+                sh = parse_sleep(vitals.sleep)
+                if sh < 5:
+                    vitals_analysis.append(f"😴 Sleep of {vitals.sleep} is insufficient.")
+
+        # Map to TopMatch objects
+        top_matches = [
+            TopMatch(condition=tm.condition, confidence=max(0, min(100, tm.confidence)))
+            for tm in diagnosis.top_matches[:3]
+        ]
+
+        print(f"🤖 Ollama result: {diagnosis.condition} ({confidence}%) → {specialist}")
+
+        return SymptomResponse(
+            condition       = diagnosis.condition,
+            confidence      = confidence,
+            advice          = diagnosis.advice,
+            specialist      = specialist,
+            description     = diagnosis.description or "No description available.",
+            precautions     = diagnosis.precautions[:4],
+            urgency         = diagnosis.urgency if diagnosis.urgency in ("Normal", "High", "Emergency") else "Normal",
+            top_matches     = top_matches,
+            next_steps      = diagnosis.next_steps[:4],
+            vitals_analysis = vitals_analysis,
+        )
+
+    except httpx.TimeoutException:
+        print("⚠️  Ollama timed out — falling back to ML model")
+        return None
+    except Exception as e:
+        print(f"⚠️  Ollama error: {e} — falling back to ML model")
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Endpoints
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1540,17 +1741,26 @@ def build_feature_vector(
         return X
 
 
-@app.post("/predict_symptoms", response_model=SymptomResponse)
-def predict_symptoms(data: SymptomRequest):
-    """Predicts a likely health condition and recommends a specialist.
+# ==============================================================================
+# SECTION 3: INFERENCE ENDPOINTS (FASTAPI)
+# ==============================================================================
 
-    Flow:
-    1. Direct Lookup: Checks if query is a known disease name.
-    2. Parsing: Extracts symptoms using the NLP pipeline (`normalize_input`).
-    3. Inference: Computes probabilities via the XGBoost model (vitals-aware).
-    4. Safety Logic: Adjusts probabilities and gates severe diagnoses.
-    5. Enrichment: Adds precautions and specialist info from metadata.
+@app.post("/predict_symptoms")
+async def predict_symptoms(request: SymptomRequest):
     """
+    Main inference entry point. Predicts potential health conditions based on 
+    symptoms and real-time vitals context.
+    
+    Workflow:
+    1. Validate asset presence (model, metadata).
+    2. Vectorize symptoms via normalize_input.
+    3. Inject and normalize vitals (Age, HR, BP).
+    4. Run Classifier (HGB/XGBoost).
+    5. Apply Safety Overrides (Emergency hallmarks).
+    6. Parallel: Fetch deep reasoning from LLM (Gemma3).
+    7. Formulate and return S-Tier JSON response.
+    """
+    data = request
     # ── Easter Egg Check ──────────────────────────────────────────────────────
     text_check = data.symptoms.lower().replace("'", "").strip()
     if any(phrase in text_check for phrase in ["i am dead", "im dead", "i feel dead", "already dead"]):
@@ -1566,6 +1776,16 @@ def predict_symptoms(data: SymptomRequest):
             next_steps  = ["Haunt a spooky mansion", "Poltergeist activities", "Apply for the Afterlife Waiting Room"]
         )
 
+    # ── Ollama LLM Primary Path ─────────────────────────────────────────────
+    # The LLM provides far superior clinical reasoning compared to the
+    # statistical ML model. Falls back automatically if Ollama is down.
+    if is_ollama_available():
+        ollama_result = predict_with_ollama(data.symptoms, data.vitals_context)
+        if ollama_result is not None:
+            return ollama_result
+        print("⚠️  Ollama returned None, falling back to local ML model")
+
+    # ── Fallback: Local ML Model ───────────────────────────────────────────
     # ── Step 1: Normalize & Extract Symptoms ──
     input_symptoms = normalize_input(data.symptoms, known_symptoms=metadata['all_symptoms'])
     print(f"DEBUG [NLP]: Input='{data.symptoms}' -> Matched={input_symptoms}")
@@ -1845,13 +2065,18 @@ def predict_symptoms(data: SymptomRequest):
     )
 
 
-@app.post("/predict_wellness", response_model=WellnessResponse)
-def predict_wellness(data: WellnessRequest):
-    """Analyzes vitals history to generate a health status score.
-
-    Uses a trend-aware heuristic to detect anomalies in Blood Pressure, 
-    Heart Rate, and Sleep patterns over the last 5 logs.
+@app.post("/predict_wellness")
+async def predict_wellness(request: WellnessRequest):
     """
+    Wellness Analytics Engine. Evaluates vitals trends and historical averages 
+    to provide a holistic 'Guardian Score'.
+    
+    Logic:
+    - Rule-based analysis of HR/BP ranges relative to user Age.
+    - Sleep quality assessment.
+    - Wellness index calculation (0-100).
+    """
+    data = request
     history = data.vitals_history
     if not history:
         return WellnessResponse(

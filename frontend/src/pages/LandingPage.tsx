@@ -1,15 +1,24 @@
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Shield, Users, Activity, Sparkles, Heart, ArrowRight, CheckCircle2 } from "lucide-react"
+import { Shield, Users, Activity, Sparkles, Heart, ArrowRight, CheckCircle2, FileText } from "lucide-react"
 import { DashboardMockup } from "@/components/landing/dashboard-mockup"
+import { Guardian3D } from "@/components/landing/guardian-3d"
 
+/**
+ * Animation variants for rendering content fading up smoothly into view.
+ * Used with Framer Motion components.
+ */
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.6 }
 }
 
+/**
+ * Animation variants for staggering the animation of child elements.
+ * Provides a cascading effect when rendering lists or groups of items.
+ */
 const staggerContainer = {
   animate: {
     transition: {
@@ -18,6 +27,12 @@ const staggerContainer = {
   }
 }
 
+/**
+ * LandingPage Screen Component
+ * ----------------------------
+ * Handles the main unauthenticated marketing splash page for the Famplus platform.
+ * Employs modern UI frameworks (Framer Motion, Lucide Icons) and advanced positioning.
+ */
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] selection:bg-primary/20">
@@ -99,31 +114,48 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section className="py-24 bg-white">
+      {/* Features Grid & 3D Core */}
+      <section className="py-24 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center space-y-4 mb-20">
-            <h2 className="text-4xl font-black text-slate-900 tracking-tight">The Guardian Technology</h2>
-            <p className="text-slate-500 max-w-2xl mx-auto">We combine advanced clinical modeling with intuitive family management.</p>
-          </div>
+          <div className="flex flex-col lg:flex-row gap-16 items-center">
+            
+            {/* Left side: Text & Features */}
+            <div className="flex-1 space-y-12">
+              <div className="space-y-4">
+                <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">The Guardian Technology</h2>
+                <p className="text-slate-500 max-w-xl text-lg leading-relaxed">We combine an advanced local LLM clinical reasoning engine with intuitive, privacy-first family management.</p>
+              </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <FeatureCard 
-              icon={<Sparkles className="w-6 h-6 text-white" />}
-              title="AI Symptom Engine"
-              desc="Our Bernoulli Naive Bayes model detects red-flag conditions like Angina with high precision."
-              highlight={true}
-            />
-            <FeatureCard 
-              icon={<Users className="w-6 h-6 text-indigo-500" />}
-              title="Family Circles"
-              desc="Independent accounts linked by trust. Every user keeps their own email while sharing data."
-            />
-            <FeatureCard 
-              icon={<Shield className="w-6 h-6 text-green-600" />}
-              title="Hashed & Verified"
-              desc="All session data is secured via signed JWT tokens. Your privacy is our highest priority."
-            />
+              <div className="grid sm:grid-cols-2 gap-6">
+                <FeatureCard 
+                  icon={<Sparkles className="w-6 h-6 text-white" />}
+                  title="Local AI Reasoning"
+                  desc="Powered by Gemma 3 and SciSpacy NLP, processing complex medical contexts locally."
+                  highlight={true}
+                />
+                <FeatureCard 
+                  icon={<FileText className="w-6 h-6 text-indigo-500" />}
+                  title="Clinical Reports"
+                  desc="Instantly generate branded, professional PDF diagnostic reports with integrated patient vitals."
+                />
+                <FeatureCard 
+                  icon={<Users className="w-6 h-6 text-orange-500" />}
+                  title="Family Circles"
+                  desc="Independent accounts linked by trust. Everyone keeps their own identity while sharing data."
+                />
+                <FeatureCard 
+                  icon={<Shield className="w-6 h-6 text-green-600" />}
+                  title="Hashed & Verified"
+                  desc="All diagnostic data is secured via signed JWT tokens. Your privacy is our highest priority."
+                />
+              </div>
+            </div>
+
+            {/* Right side: 3D Animation */}
+            <div className="flex-1 w-full lg:w-1/2">
+              <Guardian3D />
+            </div>
+
           </div>
         </div>
       </section>
@@ -158,6 +190,15 @@ export default function LandingPage() {
   )
 }
 
+/**
+ * Reusable FeatureCard Component
+ * Implements a standardized visual card describing a singular core feature of the platform.
+ * 
+ * @param {ReactNode} icon - The graphical icon representing the feature (typically Lucide).
+ * @param {string} title - The short descriptive heading of the feature.
+ * @param {string} desc - The long-form description of what the feature does.
+ * @param {boolean} highlight - Whether the card should be highlighted using branded coloring and pseudo-animations.
+ */
 function FeatureCard({ icon, title, desc, highlight = false }: any) {
   return (
     <div className={`p-8 rounded-[2rem] border transition-all duration-300 ${highlight ? 'bg-primary/5 border-primary/20 shadow-xl shadow-primary/5 relative overflow-hidden' : 'bg-white border-slate-100 hover:border-slate-200 hover:shadow-lg'}`}>
@@ -173,6 +214,11 @@ function FeatureCard({ icon, title, desc, highlight = false }: any) {
   )
 }
 
+/**
+ * Miniature checkmark item used for comparison lists or bullet points
+ * 
+ * @param {string} text - The short label to display next to the checkmark.
+ */
 function CheckItem({ text }: { text: string }) {
     return (
         <div className="flex items-center gap-3">

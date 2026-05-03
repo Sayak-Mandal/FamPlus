@@ -1,9 +1,11 @@
 import { Link, Outlet } from "react-router-dom";
 import { Activity } from "lucide-react";
+import { AnimatedBackground } from "@/components/animated-background";
 
 export default function AuthLayout() {
     return (
-        <div className="min-h-screen w-full flex bg-background">
+        <div className="min-h-screen w-full flex flex-row-reverse bg-background">
+
             {/* Left Side - Form Container */}
             <div className="w-full md:w-1/2 lg:w-[45%] flex flex-col justify-center px-8 md:px-16 lg:px-24 relative z-10 bg-background/95 backdrop-blur-sm">
                 <div className="mb-8 md:absolute md:top-8 md:left-12 flex items-center gap-2">
@@ -18,25 +20,18 @@ export default function AuthLayout() {
                 </div>
             </div>
 
-            {/* Right Side - Abstract Artistic Background */}
-            <div className="hidden md:flex w-1/2 lg:w-[55%] relative overflow-hidden bg-primary/10 items-end justify-end p-12 lg:p-20">
-                {/* Abstract CSS Shapes/Gradient */}
-                <div className="absolute inset-0 bg-[#F9F7F2] dark:bg-black">
-                    <div className="absolute top-[-20%] right-[-10%] w-[800px] h-[800px] rounded-full bg-gradient-to-br from-primary via-orange-400 to-red-400 opacity-80 blur-3xl" />
-                    <div className="absolute bottom-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-gradient-to-tr from-orange-200 to-primary opacity-60 blur-3xl" />
-                    <div className="absolute top-[40%] left-[20%] w-[400px] h-[400px] rounded-full bg-orange-300/50 blur-[100px]" />
-
-                    {/* Glassmorphic Overlay/Texture */}
-                    <div className="absolute inset-0 bg-white/10 backdrop-blur-[1px]" />
-                </div>
+            {/* Right Side - Abstract Artistic Background (Now on Left) */}
+            <div className="hidden md:flex w-1/2 lg:w-[55%] relative overflow-hidden bg-primary/10 items-end justify-start p-12 lg:p-20">
+                {/* 3D Animated Medical/Abstract Background */}
+                <AnimatedBackground />
 
                 {/* Content Overlay */}
-                <div className="relative z-10 text-right space-y-2">
+                <div className="relative z-10 text-left space-y-2">
 
                     <h1 className="text-6xl lg:text-8xl font-black text-orange-950 tracking-tighter drop-shadow-sm">
                         Welcome.
                     </h1>
-                    <p className="text-orange-950/80 max-w-md ml-auto text-sm leading-relaxed text-right mt-4 font-medium">
+                    <p className="text-orange-950/80 max-w-md mr-auto text-sm leading-relaxed text-left mt-4 font-medium">
                         Monitor your family's health with intelligent insights.
                         Join thousands of families trusting FamPlus.
                     </p>

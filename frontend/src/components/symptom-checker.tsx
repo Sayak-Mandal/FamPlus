@@ -1,17 +1,40 @@
+/**
+ * @file symptom-checker.tsx
+ * @description Core diagnostic interface for the Famplus ecosystem.
+ * Fuses React 19 UI with a Python-based AI microservice to provide
+ * vitals-aware symptom analysis and clinical-grade PDF reporting.
+ */
+
 import React, { useState } from 'react'
 import { predictCondition, VitalsContext } from '@/services/ai-model'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2 } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download } from 'lucide-react'
 import { getFamilyMembers, logSymptom } from '@/app/actions/health'
 import { Link } from "react-router-dom";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+/**
+ * 🏥 SymptomChecker Component
+ * ------------------------------------------------------------------------------
+ * The primary interface for the Famplus AI Diagnostic System.
+ * 
+ * Features:
+ * - Multi-member selection for context-aware diagnosis.
+ * - Real-time vitals freshness validation.
+ * - Deep inference via Python AI Engine + Gemma3 LLM.
+ * - Clinical-grade PDF report generation via jsPDF.
+ * 
+ * @component
+ */
 
 /**
  * Maximum age (in minutes) before dashboard vitals are considered stale.
- * Vitals older than this will NOT be sent to the AI engine.
  */
 const VITALS_FRESHNESS_LIMIT = 180; // 3 hours
+
 
 export function SymptomChecker() {
     const [symptoms, setSymptoms] = useState("")
@@ -89,6 +112,10 @@ export function SymptomChecker() {
         }
     }
 
+    /**
+     * Triggers the AI analysis pipeline.
+     * Fetches vitals context, calls the inference engine, and logs the encounter.
+     */
     const handleAnalyze = async () => {
         if (!symptoms.trim()) return;
         setLoading(true);
@@ -113,6 +140,145 @@ export function SymptomChecker() {
             setLoading(false);
         }
     }
+
+    /**
+     * Generates a professional health report in PDF format.
+     * Incorporates patient data, vitals snapshots, and AI-driven clinical guidance.
+     */
+    const handleDownloadPDF = () => {
+        if (!result) return;
+        
+        const doc = new jsPDF();
+        
+        // Brand Header
+        doc.setFillColor(15, 23, 42); // slate-900 (Famplus brand dark)
+        doc.rect(0, 0, 210, 40, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text("FAMPLUS HEALTH", 14, 20);
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text("AI Diagnostic Support Engine - Preliminary Report", 14, 28);
+        
+        const date = new Date().toLocaleString();
+        doc.text(`Generated: ${date}`, 14, 34);
+
+        // Reset text color for body
+        doc.setTextColor(0, 0, 0);
+
+        let yPos = 50;
+        
+        // Patient Context
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Patient Information", 14, yPos);
+        yPos += 8;
+        
+        const patientName = selectedMemberData?.name || "Anonymous User";
+        
+        autoTable(doc, {
+            startY: yPos,
+            body: [
+                ['Patient Name', patientName],
+                ['Reported Symptoms', symptoms]
+            ],
+            theme: 'plain',
+            styles: { fontSize: 10, cellPadding: 2 },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } }
+        });
+        
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // Vitals
+        if (selectedMemberData && vitalsStatus === 'fresh') {
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Recorded Vitals", 14, yPos);
+            yPos += 8;
+
+            const vitalsBody = [];
+            if (selectedMemberData.heartRate) vitalsBody.push(['Heart Rate', `${selectedMemberData.heartRate} bpm`]);
+            if (selectedMemberData.bloodPressure) vitalsBody.push(['Blood Pressure', `${selectedMemberData.bloodPressure} mmHg`]);
+            if (selectedMemberData.sleep) vitalsBody.push(['Sleep (Last Night)', `${selectedMemberData.sleep}`]);
+
+            if (vitalsBody.length > 0) {
+                autoTable(doc, {
+                    startY: yPos,
+                    body: vitalsBody,
+                    theme: 'plain',
+                    styles: { fontSize: 10, cellPadding: 2 },
+                    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } }
+                });
+                // @ts-ignore
+                yPos = doc.lastAutoTable.finalY + 15;
+            }
+        }
+
+        // AI Assessment
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text("AI Assessment", 14, yPos);
+        yPos += 8;
+        
+        autoTable(doc, {
+            startY: yPos,
+            body: [
+                ['Condition Match', result.condition],
+                ['Confidence', `${result.confidence}%`],
+                ['Urgency Level', result.urgency || 'Normal'],
+                ['Recommended Specialist', result.specialist || 'General Physician']
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [41, 128, 185] },
+            styles: { fontSize: 11, cellPadding: 4 }
+        });
+        
+        // @ts-ignore
+        yPos = doc.lastAutoTable.finalY + 15;
+
+        // Advice
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Clinical Guidance", 14, yPos);
+        yPos += 8;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const splitAdvice = doc.splitTextToSize(result.advice, 180);
+        doc.text(splitAdvice, 14, yPos);
+        yPos += splitAdvice.length * 5 + 10;
+        
+        // Precautions/Next Steps
+        const listItems = (result.precautions && result.precautions.length > 0) ? result.precautions : result.next_steps;
+        if (listItems && listItems.length > 0) {
+            doc.setFontSize(12);
+            doc.setFont('helvetica', 'bold');
+            doc.text("Recommendations:", 14, yPos);
+            yPos += 8;
+            
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            listItems.forEach(item => {
+                const lines = doc.splitTextToSize(`• ${item}`, 180);
+                doc.text(lines, 14, yPos);
+                yPos += lines.length * 5 + 2;
+            });
+        }
+
+        // WARNING FOOTER
+        const pageHeight = doc.internal.pageSize.height;
+        doc.setTextColor(220, 38, 38); // red-600
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        const warningText = "WARNING: This report was generated by an Artificial Intelligence engine and is NOT a definitive medical diagnosis. It is intended for informational purposes only. Please present this document to a qualified medical professional for proper clinical evaluation and diagnosis.";
+        const splitWarning = doc.splitTextToSize(warningText, 180);
+        doc.text(splitWarning, 14, pageHeight - 15);
+        
+        doc.save(`Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.pdf`);
+    };
 
     return (
         <Card className="w-full border-none shadow-sm bg-card overflow-hidden relative">
@@ -293,15 +459,26 @@ export function SymptomChecker() {
                                     </div>
                                 )}
 
-                                <Button
-                                    className={`w-full h-14 rounded-2xl gap-3 text-lg font-black tracking-tight ${result.urgency === 'High' ? 'bg-red-500 hover:bg-red-600' : ''}`}
-                                    asChild
-                                >
-                                    <Link to={`/find-care?symptoms=${encodeURIComponent(symptoms)}`}>
-                                        <MapPin className="h-5 w-5" />
-                                        {result.urgency === 'High' ? 'Find Emergency Care' : `Locate ${result.specialist || 'General Physician'}`}
-                                    </Link>
-                                </Button>
+                                <div className="flex flex-col gap-3">
+                                    <Button
+                                        className={`w-full h-14 rounded-2xl gap-3 text-lg font-black tracking-tight ${result.urgency === 'High' ? 'bg-red-500 hover:bg-red-600 text-white' : ''}`}
+                                        asChild
+                                    >
+                                        <Link to={`/find-care?symptoms=${encodeURIComponent(symptoms)}`}>
+                                            <MapPin className="h-5 w-5" />
+                                            {result.urgency === 'High' ? 'Find Emergency Care' : `Locate ${result.specialist || 'General Physician'}`}
+                                        </Link>
+                                    </Button>
+
+                                    <Button
+                                        variant="outline"
+                                        className="w-full h-14 rounded-2xl gap-3 text-lg font-bold border-2 bg-background hover:bg-muted text-foreground"
+                                        onClick={handleDownloadPDF}
+                                    >
+                                        <Download className="h-5 w-5" />
+                                        Download AI Report (PDF)
+                                    </Button>
+                                </div>
                             </div>
                         </div>
 

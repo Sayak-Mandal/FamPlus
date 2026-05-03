@@ -1,3 +1,11 @@
+/**
+ * 👤 User Model
+ * ------------------------------------------------------------------------------
+ * Represents the primary account owner. Stores authentication credentials,
+ * profile metadata, and associations with family circles.
+ * 
+ * @module User
+ */
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
