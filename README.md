@@ -1,4 +1,4 @@
-# 🏥 Famplus — Proactive S-Tier Family Healthcare
+# 🏥 Famplus — Proactive Family Healthcare Prototype
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Tech Stack](https://img.shields.io/badge/Stack-MERN%20+%20Python%20AI-success)](./structure.md)
@@ -7,15 +7,15 @@ Famplus is a premium, high-performance health platform engineered for proactive 
 
 ---
 
-## 🚀 Vision: S-Tier Diagnostic Intelligence
+## 🚀 Vision: Advanced Health Support Prototype
 
-Famplus isn't just a tracker; it's a clinical-grade companion. Our latest version introduces **Guardian Technology**—a 3D-enhanced preventative layer that monitors family health trends with unprecedented depth.
+Famplus is a research-oriented health monitoring prototype designed to bridge the gap between tracking and triage. Our latest version introduces **Guardian Technology**—a 3D-enhanced visualization layer that helps monitor family health trends with greater clarity.
 
 ### 🧠 Advanced AI Ecosystem
-*   **SciSpacy NLP Pipeline**: Migrated from manual keyword mapping to automated biomedical entity extraction. The AI now understands complex medical terminology and conversational symptom descriptions.
-*   **Vitals-Aware Inference**: Our Gradient Boosting model doesn't just look at symptoms; it correlates them with real-time Age, Heart Rate, and Blood Pressure for high-fidelity clinical triage.
+*   **SciSpacy NLP Pipeline**: Utilizes an automated biomedical entity extraction pipeline to better understand medical terminology and conversational symptom descriptions.
+*   **Vitals-Aware Inference**: The Gradient Boosting model correlates symptoms with real-time Age, Heart Rate, and Blood Pressure for improved diagnostic simulations.
 *   **Technical Deep-Dive**: Explore our inference strategy and safety guardrails in [ai_architecture.md](server/ai_architecture.md).
-*   **Local Gemma3 LLM Backend**: Integrated local Large Language Model capabilities for deep clinical reasoning and contextual health advice without compromising privacy.
+*   **Local Gemma3 LLM Integration**: Leverages local Large Language Model capabilities for contextual health advice and clinical reasoning simulations.
 *   **Vitals-Contextual Diagnostics**: Inference is uniquely aware of the patient's individual vitals (Age, Heart Rate, BP), biasing diagnostic probabilities based on real-time evidence.
 *   **Professional PDF Reporting**: Branded, clinical-ready PDF diagnostic reports generated directly from the dashboard for sharing with healthcare providers.
 
@@ -42,6 +42,9 @@ Famplus isn't just a tracker; it's a clinical-grade companion. Our latest versio
 
 ### 1. Prerequisites
 - **Node.js** (v18+) & **Python** (v3.9+)
+- **Ollama**: Required for local LLM reasoning. [Download here](https://ollama.com).
+- **Gemma 2b/7b**: Pull the model via `ollama pull gemma:2b`.
+- **SciSpacy Model**: Install via `pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz`.
 - **MongoDB** (Local or Atlas)
 - **Google Maps API Key** (for Find Care features)
 

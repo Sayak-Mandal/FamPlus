@@ -1,5 +1,5 @@
 """
-# 🏥 Famplus AI Inference Engine (v4.0 — S-Tier Clinical Intelligence)
+# 🏥 Famplus AI Inference Engine (v4.0 — Advanced Health Support Prototype)
 # ------------------------------------------------------------------------------
 # Author: Sayak Mandal
 # Version: 4.0 (Vitals-Aware + SciSpacy NER + Gemma3 Reasoning)

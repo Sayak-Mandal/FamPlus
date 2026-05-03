@@ -26,7 +26,7 @@ Famplus/
 │   ├── public/             # Static Assets & 3D Models
 │   └── vite.config.ts      # Build configuration
 ├── server/                 # Python AI Clinical Inference Engine
-│   ├── ai_engine.py         # S-Tier Inference Engine (SciSpacy + XGBoost)
+│   ├── ai_engine.py         # Advanced Inference Engine (SciSpacy + HGBDT)
 │   ├── ai_architecture.md   # [DOCS] Technical Deep-Dive on AI Module
 │   ├── train_model.py       # ML Training Pipeline
 │   ├── model.joblib        # Trained Model Weights

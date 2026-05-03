@@ -24,8 +24,8 @@ import autoTable from 'jspdf-autotable';
  * Features:
  * - Multi-member selection for context-aware diagnosis.
  * - Real-time vitals freshness validation.
- * - Deep inference via Python AI Engine + Gemma3 LLM.
- * - Clinical-grade PDF report generation via jsPDF.
+ * - Integrated health insights via Python AI Engine + Gemma3 LLM.
+ * - Health report generation via jsPDF.
  * 
  * @component
  */

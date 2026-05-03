@@ -1,7 +1,7 @@
 # 🧠 Famplus AI Intelligence Layer: Technical Architecture
 
 ## Overview
-The Famplus AI module (the "Cerebellum") is a high-performance clinical decision support system. It leverages a multi-stage pipeline combining **Biomedical NLP**, **Gradient Boosted Machine Learning**, and **Local LLM Reasoning** to transform raw user symptoms and real-time vitals into actionable specialist recommendations.
+The Famplus AI module (the "Cerebellum") is a comprehensive health support prototype. It leverages a multi-stage pipeline combining **Biomedical NLP**, **Gradient Boosted Machine Learning**, and **Local LLM Reasoning** to demonstrate how user symptoms and real-time vitals can be transformed into actionable health insights.
 
 ---
 
@@ -67,12 +67,22 @@ graph TD
 
 ---
 
-## 🛠️ Technical Stack
+## 🛠️ Technical Stack & Requirements
 - **Framework**: FastAPI (Python 3.10+)
-- **NLP**: Spacy / SciSpacy
+- **NLP**: Spacy / SciSpacy (`en_core_sci_sm`)
 - **ML**: Scikit-Learn (HistGradientBoosting), Joblib
-- **LLM**: Ollama (Gemma3)
+- **LLM**: Ollama (**Gemma 2b/7b**)
 - **Data**: Pandas / NumPy
+
+### Installation Note:
+To initialize the LLM backend, run:
+```bash
+ollama pull gemma:2b
+```
+And for the NLP pipeline:
+```bash
+pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz
+```
 
 ---
 

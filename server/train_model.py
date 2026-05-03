@@ -1,5 +1,5 @@
 """
-# 🎯 Famplus ML Model Training Pipeline (v4.0 — S-Tier Intelligence)
+# 🎯 Famplus ML Model Training Pipeline (v4.0 — Advanced Implementation)
 # ------------------------------------------------------------------------------
 # Author: Sayak Mandal
 # Version: 4.0 (Vitals-Aware Gradient Boosting)
