@@ -1010,7 +1010,28 @@ SYMPTOM_ALIASES: Dict[str, str] = {
 # SECTION 2: NLP PIPELINE & SYMPTOM NORMALIZATION
 # ==============================================================================
 
-def normalize_input(text: str, symptom_list: List[str]) -> List[int]:
+_fuzzy_targets_cache = None
+
+def _build_fuzzy_targets(known_symptoms: List[str]) -> dict:
+    global _fuzzy_targets_cache
+    if _fuzzy_targets_cache is not None:
+        return _fuzzy_targets_cache
+    
+    # Map 'chest_pain' to 'chest pain' to make token set ratio work better
+    _fuzzy_targets_cache = {s.replace('_', ' '): s for s in known_symptoms}
+    return _fuzzy_targets_cache
+
+def _fuzzy_match_entity(ent_text: str, fuzzy_targets: dict) -> Optional[str]:
+    best_match = None
+    best_score = 0
+    for target_name, canonical_name in fuzzy_targets.items():
+        score = fuzz.token_set_ratio(ent_text, target_name)
+        if score > 85 and score > best_score:
+            best_score = score
+            best_match = canonical_name
+    return best_match
+
+def normalize_input(text: str, known_symptoms: List[str]) -> List[int]:
     """
     Translates raw natural language input into a binary feature vector compatible 
     with the ML model.
@@ -1024,7 +1045,7 @@ def normalize_input(text: str, symptom_list: List[str]) -> List[int]:
     
     Args:
         text: Raw symptom description from the user.
-        symptom_list: The full list of symptoms the model was trained on.
+        known_symptoms: The full list of symptoms the model was trained on.
         
     Returns:
         A list of binary integers (0 or 1) representing present symptoms.
@@ -1580,9 +1601,10 @@ def predict_with_ollama(
                     ],
                     "format": OllamaDiagnosis.model_json_schema(),
                     "stream": False,
+                    "keep_alive": -1,
                     "options": {
                         "temperature": 0,
-                        "num_predict": 1024,
+                        "num_predict": 512,
                     },
                 },
             )
@@ -1776,16 +1798,10 @@ async def predict_symptoms(request: SymptomRequest):
             next_steps  = ["Haunt a spooky mansion", "Poltergeist activities", "Apply for the Afterlife Waiting Room"]
         )
 
-    # ── Ollama LLM Primary Path ─────────────────────────────────────────────
-    # The LLM provides far superior clinical reasoning compared to the
-    # statistical ML model. Falls back automatically if Ollama is down.
-    if is_ollama_available():
-        ollama_result = predict_with_ollama(data.symptoms, data.vitals_context)
-        if ollama_result is not None:
-            return ollama_result
-        print("⚠️  Ollama returned None, falling back to local ML model")
+    # ── Local ML Model (Fast-First) ─────────────────────────────────────────
+    # We execute the lightning-fast local ML pipeline first. 
+    # If confidence is extremely high, we return instantly.
 
-    # ── Fallback: Local ML Model ───────────────────────────────────────────
     # ── Step 1: Normalize & Extract Symptoms ──
     input_symptoms = normalize_input(data.symptoms, known_symptoms=metadata['all_symptoms'])
     print(f"DEBUG [NLP]: Input='{data.symptoms}' -> Matched={input_symptoms}")
@@ -2051,7 +2067,7 @@ async def predict_symptoms(request: SymptomRequest):
             f"Book an appointment with a {specialist}",
         ]
 
-    return SymptomResponse(
+    ml_response = SymptomResponse(
         condition       = final_disease,
         confidence      = final_confidence,
         advice          = advice,
@@ -2063,6 +2079,25 @@ async def predict_symptoms(request: SymptomRequest):
         next_steps      = next_steps,
         vitals_analysis = vitals_analysis,
     )
+
+    # ── Fast-First Inference Strategy ─────────────────────────────────────────
+    # If the ML model is highly confident (>=85%) or has detected a critical emergency,
+    # return the result immediately to bypass the 10+ second LLM delay.
+    # We only invoke Ollama for complex, low-confidence, or ambiguous cases.
+    if urgency == "Emergency" or (final_confidence >= 85 and final_disease not in SCARY_DISEASES):
+        print(f"⚡ Fast-First Strategy: Returning ML result (Confidence: {final_confidence}%, Urgency: {urgency})")
+        return ml_response
+
+    # ── Ollama LLM Reasoning Path ─────────────────────────────────────────────
+    # For ambiguous or lower confidence cases, invoke the LLM for deep reasoning.
+    if is_ollama_available():
+        print("🧠 Invoking Ollama for deep reasoning on complex case...")
+        ollama_result = predict_with_ollama(data.symptoms, data.vitals_context)
+        if ollama_result is not None:
+            return ollama_result
+        print("⚠️  Ollama returned None, falling back to local ML model")
+
+    return ml_response
 
 
 @app.post("/predict_wellness")
