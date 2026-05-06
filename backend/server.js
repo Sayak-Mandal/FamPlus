@@ -26,6 +26,11 @@ const Doctor = require('./models/Doctor');
 const VitalLog = require('./models/VitalLog');
 const SymptomLog = require('./models/SymptomLog');
 const FamilyCircle = require('./models/FamilyCircle');
+const Record = require('./models/Record');
+
+const multer = require('multer');
+const fs = require('fs');
+const slugify = require('slugify');
 
 // Initialize Express Application
 const app = express();
@@ -33,6 +38,38 @@ const app = express();
 app.use(helmet()); // Basic security headers
 app.use(cors());
 app.use(express.json());
+
+// Static serving for uploaded records
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Multer Configuration for Vault
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const originalName = slugify(file.originalname.split('.')[0], { lower: true });
+    const extension = path.extname(file.originalname);
+    cb(null, `${originalName}-${uniqueSuffix}${extension}`);
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDFs and Images are allowed.'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // Rate Limiting (100 requests per 15 minutes as requested)
 const limiter = rateLimit({
@@ -640,6 +677,85 @@ app.post('/api/family/:memberId/wellness', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('Wellness error:', err.message);
     res.status(500).json({ error: 'Failed to compute wellness score.' });
+  }
+});
+
+// ─────────────────────────────────────────────
+// HISTORICAL RECORD VAULT ROUTES
+// ─────────────────────────────────────────────
+
+/**
+ * Upload a new medical record
+ * @route POST /api/records/upload
+ */
+app.post('/api/records/upload', requireAuth, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    
+    const { title, category, familyMemberId } = req.body;
+    if (!title || !familyMemberId) return res.status(400).json({ error: 'Title and Family Member are required' });
+
+    const record = await Record.create({
+      userId: req.userId,
+      familyMemberId,
+      title,
+      category: category || 'Other',
+      fileName: req.file.filename,
+      fileUrl: `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`,
+      fileType: req.file.mimetype,
+      fileSize: req.file.size
+    });
+
+    res.status(201).json(record);
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Failed to upload record' });
+  }
+});
+
+/**
+ * Get all records for the user's family circle
+ */
+app.get('/api/records', requireAuth, async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user.familyCircleId) return res.status(404).json({ error: 'Circle not found' });
+
+    // Get all members in the circle
+    const members = await FamilyMember.find({ familyCircleId: user.familyCircleId });
+    const memberIds = members.map(m => m._id);
+
+    // Find records for these members
+    const records = await Record.find({ familyMemberId: { $in: memberIds } })
+      .sort({ createdAt: -1 })
+      .populate('familyMemberId', 'name avatar relation');
+
+    res.json(records);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * Delete a record
+ */
+app.delete('/api/records/:recordId', requireAuth, async (req, res) => {
+  try {
+    const record = await Record.findOne({ _id: req.params.recordId, userId: req.userId });
+    if (!record) return res.status(404).json({ error: 'Record not found or unauthorized' });
+
+    // Delete file from disk
+    const filePath = path.join(__dirname, 'uploads', record.fileName);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    await Record.findByIdAndDelete(req.params.recordId);
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

@@ -99,3 +99,35 @@ export async function updateFamilyMember(memberId: string, data: any) {
         return { success: false, error: "Failed to update family member" };
     }
 }
+
+export async function uploadRecord(formData: FormData) {
+    try {
+        const response = await api.post(`/records/upload`, formData, { 
+            headers: { 
+                ...getHeaders(),
+                'Content-Type': 'multipart/form-data'
+            } 
+        });
+        return { success: true, data: response.data };
+    } catch (error) {
+        return { success: false, error: "Failed to upload record" };
+    }
+}
+
+export async function getRecords() {
+    try {
+        const response = await api.get(`/records`, { headers: getHeaders() });
+        return response.data;
+    } catch (error) {
+        return [];
+    }
+}
+
+export async function deleteRecord(recordId: string) {
+    try {
+        await api.delete(`/records/${recordId}`, { headers: getHeaders() });
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: "Failed to delete record" };
+    }
+}

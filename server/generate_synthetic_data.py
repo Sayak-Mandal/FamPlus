@@ -36,13 +36,13 @@ OUTPUT_PATH     = '../dataset/archive/synthetic_data.csv'
 
 # ── Tuning knobs ───────────────────────────────────────────────────────────────
 # How many total rows we want per disease after combining real + synthetic
-TARGET_ROWS_PER_DISEASE = 1200
+TARGET_ROWS_PER_DISEASE = 2000
 
 # Probability that a given noise symptom gets injected into a row (0.0 – 1.0)
-NOISE_PROBABILITY = 0.08   # 8%  →  realistic but not overwhelming
+NOISE_PROBABILITY = 0.15   # 15%  →  more robust against irrelevant inputs
 
 # How many noise symptoms can be added per row at most
-MAX_NOISE_SYMPTOMS = 2
+MAX_NOISE_SYMPTOMS = 3
 
 # Min / max symptoms per synthetic sample (mimics real patient visit complexity)
 MIN_SYMPTOMS = 3
@@ -71,45 +71,64 @@ DEFAULT_VITALS_PROFILE = {
 DISEASE_VITALS_PROFILES = {
     # ── Cardiac / Vascular ─────────────────────────────────────────────────
     'Heart attack': {
-        'age': (58, 12),    # Older patients, higher risk
-        'hr':  (105, 20),   # Tachycardia common during MI
-        'sbp': (155, 20),   # Hypertension is a major risk factor
-        'dbp': (95, 12),
+        'age': (62, 10),    # Skewed older
+        'hr':  (115, 25),   # Higher tachycardia for MI
+        'sbp': (165, 25),   # Extreme hypertension risk
+        'dbp': (102, 15),
     },
     'Hypertension': {
-        'age': (52, 14),
-        'hr':  (82, 12),
-        'sbp': (152, 18),   # Elevated by definition
-        'dbp': (96, 10),
+        'age': (55, 12),
+        'hr':  (85, 12),
+        'sbp': (160, 20),   # Higher threshold
+        'dbp': (100, 10),
     },
-    'Hypertension ': {      # Trailing space variant in original dataset
-        'age': (52, 14),
-        'hr':  (82, 12),
-        'sbp': (152, 18),
-        'dbp': (96, 10),
+    'Hypertension ': {      
+        'age': (55, 12),
+        'hr':  (85, 12),
+        'sbp': (160, 20),
+        'dbp': (100, 10),
     },
+    # ── Stroke ─────────────────────────────────────────────────────────────
+    'Paralysis (brain hemorrhage)': {
+        'age': (65, 12),    
+        'hr':  (95, 20),
+        'sbp': (185, 25),   # Critical hypertension is classic for hemorrhage
+        'dbp': (110, 15),
+    },
+    # ── Severe Infections ──────────────────────────────────────────────────
+    'Pneumonia': {
+        'age': (55, 20),
+        'hr':  (110, 18),   # High tachycardia in respiratory distress
+        'sbp': (115, 15),   # Potential sepsis-driven hypotension
+        'dbp': (70, 10),
+    },
+    'Dengue': {
+        'age': (28, 14),
+        'hr':  (105, 15),   
+        'sbp': (95, 15),    # Hypotension (Shock syndrome)
+        'dbp': (62, 12),
+    },
+    'Malaria': {
+        'age': (30, 15),
+        'hr':  (108, 18),
+        'sbp': (105, 12),
+        'dbp': (65, 10),
+    },
+
     'Varicose veins': {
         'age': (48, 15),
         'hr':  (72, 8),
         'sbp': (128, 14),
         'dbp': (82, 8),
     },
-
-    # ── Neurological ───────────────────────────────────────────────────────
-    'Paralysis (brain hemorrhage)': {
-        'age': (62, 14),    # Stroke risk increases with age
-        'hr':  (90, 18),
-        'sbp': (165, 22),   # Severe hypertension linked to hemorrhagic stroke
-        'dbp': (100, 12),
-    },
     'Migraine': {
-        'age': (32, 12),    # Common in younger adults
+        'age': (32, 12),
         'hr':  (78, 10),
         'sbp': (118, 10),
         'dbp': (76, 8),
     },
     'Cervical spondylosis': {
-        'age': (55, 12),    # Degenerative — older population
+        'age': (55, 12),
         'hr':  (72, 8),
         'sbp': (130, 14),
         'dbp': (84, 8),
@@ -120,25 +139,17 @@ DISEASE_VITALS_PROFILES = {
         'sbp': (125, 12),
         'dbp': (80, 8),
     },
-
-    # ── Respiratory / Infectious ───────────────────────────────────────────
     'Common Cold': {
-        'age': (28, 15),    # All ages, but skews younger
-        'hr':  (80, 8),     # Slightly elevated (mild fever)
+        'age': (28, 15),
+        'hr':  (80, 8),
         'sbp': (118, 10),
         'dbp': (76, 8),
     },
     'Common Flu': {
         'age': (30, 15),
-        'hr':  (88, 10),    # Fever-driven tachycardia
+        'hr':  (88, 10),
         'sbp': (116, 10),
         'dbp': (74, 8),
-    },
-    'Pneumonia': {
-        'age': (45, 20),
-        'hr':  (95, 15),    # Elevated due to infection
-        'sbp': (122, 14),
-        'dbp': (78, 10),
     },
     'Tuberculosis': {
         'age': (38, 15),
@@ -152,20 +163,6 @@ DISEASE_VITALS_PROFILES = {
         'sbp': (120, 10),
         'dbp': (78, 8),
     },
-
-    # ── Tropical / Infectious ──────────────────────────────────────────────
-    'Dengue': {
-        'age': (28, 14),
-        'hr':  (92, 14),    # Fever-driven
-        'sbp': (108, 12),   # Hypotension possible in severe dengue
-        'dbp': (68, 10),
-    },
-    'Malaria': {
-        'age': (30, 15),
-        'hr':  (96, 14),
-        'sbp': (112, 12),
-        'dbp': (70, 10),
-    },
     'Typhoid': {
         'age': (25, 12),
         'hr':  (85, 10),
@@ -173,13 +170,11 @@ DISEASE_VITALS_PROFILES = {
         'dbp': (70, 8),
     },
     'Chicken pox': {
-        'age': (12, 8),     # Common in children
+        'age': (12, 8),
         'hr':  (90, 12),
         'sbp': (110, 10),
         'dbp': (70, 8),
     },
-
-    # ── Hepatic / GI ──────────────────────────────────────────────────────
     'Hepatitis B': {
         'age': (35, 14),
         'hr':  (78, 10),
@@ -227,6 +222,66 @@ DISEASE_VITALS_PROFILES = {
         'hr':  (80, 10),
         'sbp': (116, 10),
         'dbp': (74, 8),
+    },
+    'Heart attack': {
+        'age': (62, 10),
+        'hr':  (115, 25),
+        'sbp': (165, 25),
+        'dbp': (102, 15),
+    },
+    'Hypertension': {
+        'age': (55, 12),
+        'hr':  (85, 12),
+        'sbp': (160, 20),
+        'dbp': (100, 10),
+    },
+    'Paralysis (brain hemorrhage)': {
+        'age': (65, 12),
+        'hr':  (95, 20),
+        'sbp': (185, 25),
+        'dbp': (110, 15),
+    },
+    'Pneumonia': {
+        'age': (55, 20),
+        'hr':  (110, 18),
+        'sbp': (115, 15),
+        'dbp': (70, 10),
+    },
+    'Dengue': {
+        'age': (28, 14),
+        'hr':  (105, 15),
+        'sbp': (95, 15),
+        'dbp': (62, 12),
+    },
+    'Malaria': {
+        'age': (30, 15),
+        'hr':  (108, 18),
+        'sbp': (105, 12),
+        'dbp': (65, 10),
+    },
+    'Diabetes': {
+        'age': (52, 14),
+        'hr':  (82, 12),
+        'sbp': (145, 18),
+        'dbp': (92, 10),
+    },
+    'Hypoglycemia': {
+        'age': (35, 15),
+        'hr':  (110, 15),   # Higher tachycardia for hypo
+        'sbp': (95, 12),    # Hypotension
+        'dbp': (60, 10),
+    },
+    'Hyperthyroidism': {
+        'age': (35, 12),
+        'hr':  (112, 14),   # Very high HR
+        'sbp': (145, 14),
+        'dbp': (70, 10),
+    },
+    'Hypothyroidism': {
+        'age': (42, 14),
+        'hr':  (52, 8),     # Very low HR
+        'sbp': (110, 10),
+        'dbp': (85, 8),
     },
     'GERD': {
         'age': (40, 14),

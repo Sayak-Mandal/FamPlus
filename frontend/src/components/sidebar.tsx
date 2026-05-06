@@ -1,7 +1,7 @@
 
 import { Link } from "react-router-dom";
 import { useLocation } from "react-router-dom";
-import { BarChart3, Heart, Home, MapPin, Users, Activity, Sparkles, LogOut, History, Menu, X } from "lucide-react"
+import { BarChart3, Heart, Home, MapPin, Users, Activity, Sparkles, LogOut, History, Menu, X, FileDigit } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -23,6 +23,12 @@ const routes = [
         icon: Activity,
         href: "/journey",
         color: "text-foreground", // Was orange-500
+    },
+    {
+        label: "Medical Vault",
+        icon: FileDigit,
+        href: "/vault",
+        color: "text-foreground",
     },
     {
         label: "History & Edits",

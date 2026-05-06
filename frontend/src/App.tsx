@@ -14,6 +14,7 @@ import History from './pages/History';
 import FindCare from './pages/FindCare';
 import Journey from './pages/Journey';
 import AICheck from './pages/AICheck';
+import Vault from './pages/Vault';
 import LandingPage from './pages/LandingPage';
 
 // Theme Context Provider
@@ -56,6 +57,7 @@ function App() {
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/history" element={<History />} />
+            <Route path="/vault" element={<Vault />} />
             <Route path="/find-care" element={<FindCare />} />
             <Route path="/journey" element={<Journey />} />
             <Route path="/ai-check" element={<AICheck />} />

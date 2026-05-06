@@ -15,6 +15,8 @@ import { getFamilyMembers, logSymptom } from '@/app/actions/health'
 import { Link } from "react-router-dom";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
+import { saveAs } from 'file-saver';
 
 /**
  * 🏥 SymptomChecker Component
@@ -203,6 +205,12 @@ export function SymptomChecker() {
             if (selectedMemberData.heartRate) vitalsBody.push(['Heart Rate', `${selectedMemberData.heartRate} bpm`]);
             if (selectedMemberData.bloodPressure) vitalsBody.push(['Blood Pressure', `${selectedMemberData.bloodPressure} mmHg`]);
             if (selectedMemberData.sleep) vitalsBody.push(['Sleep (Last Night)', `${selectedMemberData.sleep}`]);
+            
+            // Add Timestamp for Reliability
+            if (selectedMemberData.updatedAt) {
+                const recordedAt = new Date(selectedMemberData.updatedAt).toLocaleString();
+                vitalsBody.push(['Recorded At', recordedAt]);
+            }
 
             if (vitalsBody.length > 0) {
                 autoTable(doc, {
@@ -280,6 +288,116 @@ export function SymptomChecker() {
         doc.save(`Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.pdf`);
     };
 
+    /**
+     * Generates a professional health report in DOCX format.
+     */
+    const handleDownloadDOCX = () => {
+        if (!result) return;
+
+        const patientName = selectedMemberData?.name || "Anonymous User";
+        const date = new Date().toLocaleString();
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: [
+                    new Paragraph({
+                        text: "FAMPLUS HEALTH REPORT",
+                        heading: HeadingLevel.HEADING_1,
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 200 },
+                    }),
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "AI Diagnostic Support Engine - Preliminary Report", bold: true }),
+                        ],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 100 },
+                    }),
+                    new Paragraph({
+                        text: `Generated: ${date}`,
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 400 },
+                    }),
+
+                    new Paragraph({ text: "Patient Information", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+                    new Paragraph({ children: [new TextRun({ text: "Patient Name: ", bold: true }), new TextRun(patientName)] }),
+                    new Paragraph({ children: [new TextRun({ text: "Reported Symptoms: ", bold: true }), new TextRun(symptoms)] }),
+
+                    ...(selectedMemberData && vitalsStatus === 'fresh' ? [
+                        new Paragraph({ text: "Recorded Vitals", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+                        new Paragraph({ children: [new TextRun({ text: "Heart Rate: ", bold: true }), new TextRun(`${selectedMemberData.heartRate} bpm`)] }),
+                        new Paragraph({ children: [new TextRun({ text: "Blood Pressure: ", bold: true }), new TextRun(`${selectedMemberData.bloodPressure} mmHg`)] }),
+                        new Paragraph({ children: [new TextRun({ text: "Sleep: ", bold: true }), new TextRun(`${selectedMemberData.sleep}`)] }),
+                        ...(selectedMemberData.updatedAt ? [
+                            new Paragraph({ 
+                                children: [
+                                    new TextRun({ text: "Recorded At: ", bold: true, color: "475569" }), 
+                                    new TextRun({ text: new Date(selectedMemberData.updatedAt).toLocaleString(), color: "475569" })
+                                ] 
+                            })
+                        ] : []),
+                    ] : []),
+
+                    new Paragraph({ text: "AI Assessment", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+                    new Table({
+                        width: { size: 100, type: WidthType.PERCENTAGE },
+                        rows: [
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ text: "Condition Match", bold: true })] }),
+                                    new TableCell({ children: [new Paragraph(result.condition)] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ text: "Confidence", bold: true })] }),
+                                    new TableCell({ children: [new Paragraph(`${result.confidence}%`)] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ text: "Urgency Level", bold: true })] }),
+                                    new TableCell({ children: [new Paragraph(result.urgency || 'Normal')] }),
+                                ],
+                            }),
+                            new TableRow({
+                                children: [
+                                    new TableCell({ children: [new Paragraph({ text: "Recommended Specialist", bold: true })] }),
+                                    new TableCell({ children: [new Paragraph(result.specialist || 'General Physician')] }),
+                                ],
+                            }),
+                        ],
+                    }),
+
+                    new Paragraph({ text: "Clinical Guidance", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+                    new Paragraph({ text: result.advice }),
+
+                    ...((result.precautions || result.next_steps) ? [
+                        new Paragraph({ text: "Recommendations", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
+                        ...(result.precautions || result.next_steps || []).map(item => new Paragraph({ text: `• ${item}`, bullet: { level: 0 } }))
+                    ] : []),
+
+                    new Paragraph({
+                        spacing: { before: 800 },
+                        children: [
+                            new TextRun({
+                                text: "WARNING: This report was generated by an Artificial Intelligence engine and is NOT a definitive medical diagnosis. It is intended for informational purposes only. Please present this document to a qualified medical professional for proper clinical evaluation and diagnosis.",
+                                color: "FF0000",
+                                size: 16,
+                                bold: true,
+                            }),
+                        ],
+                    }),
+                ],
+            }],
+        });
+
+        Packer.toBlob(doc).then(blob => {
+            saveAs(blob, `Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.docx`);
+        });
+    };
+
     return (
         <Card className="w-full border-none shadow-sm bg-card overflow-hidden relative">
             <div className="absolute top-0 right-0 p-6 opacity-3">
@@ -326,8 +444,11 @@ export function SymptomChecker() {
                                     <>
                                         <HeartPulse className="h-3 w-3" />
                                         Live vitals active
+                                        <span className="opacity-70 ml-1">
+                                            ({Math.floor((Date.now() - new Date(selectedMemberData.updatedAt).getTime()) / 60000)}m ago)
+                                        </span>
                                         {selectedMemberData.heartRate > 0 && (
-                                            <span className="opacity-70">• {selectedMemberData.heartRate} bpm</span>
+                                            <span className="opacity-70 ml-1">• {selectedMemberData.heartRate} bpm</span>
                                         )}
                                     </>
                                 ) : vitalsStatus === 'stale' ? (
@@ -477,6 +598,15 @@ export function SymptomChecker() {
                                     >
                                         <Download className="h-5 w-5" />
                                         Download AI Report (PDF)
+                                    </Button>
+
+                                    <Button
+                                        variant="outline"
+                                        className="w-full h-14 rounded-2xl gap-3 text-lg font-bold border-2 bg-background hover:bg-muted text-foreground"
+                                        onClick={handleDownloadDOCX}
+                                    >
+                                        <Download className="h-5 w-5" />
+                                        Download AI Report (DOCX)
                                     </Button>
                                 </div>
                             </div>
