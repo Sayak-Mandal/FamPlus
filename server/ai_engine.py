@@ -267,18 +267,19 @@ EMERGENCY_OVERRIDES: Dict[str, dict] = {
         'override_confidence': 78,
     },
 
-    # ── Severe Asthma Attack ──────────────────────────────────────────────
-    'Bronchial Asthma': {
+    # ── Toxic Ingestion / Poisoning / Pica ────────────────────────────────
+    'Toxic Ingestion': {
         'definitive_markers': [
-            'breathlessness',
+            'ingested_toxic_substance', 'swallowed_foreign_object',
         ],
         'supporting_markers': [
-            'cough', 'chest_pain', 'phlegm', 'fatigue',
-            'high_fever', 'fast_heart_rate',
+            'vomiting', 'abdominal_pain', 'nausea', 'dizziness',
         ],
         'min_definitive': 1,
-        'min_total':      3,   # Breathless + cough + chest tightness
-        'override_confidence': 75,
+        'min_total':      1,   # Immediate red flag if definitive
+        'override_confidence': 95,
+        'specialist': 'Emergency Physician / Toxicology',
+        'advice': "⚠️ EMERGENCY: You have reported ingesting a potentially toxic substance or foreign object. Please call emergency services or a poison control center immediately.",
     },
 }
 
@@ -598,6 +599,29 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'cough':                  'cough',
     'coughing':               'cough',
     'dry cough':              'cough',
+    'shortness of breath':    'breathlessness',
+    'breathless':             'breathlessness',
+    'cannot breathe':         'breathlessness',
+    'wheezing':               'breathlessness',
+
+    # ── Endocrine / Urinary ──────────────────────────────────────────────────
+    'frequent urination':     'polyuria',
+    'peeing a lot':           'polyuria',
+    'constant peeing':        'polyuria',
+    'increased thirst':       'excessive_hunger', # Mapped to hunger as a metabolic proxy in this dataset
+    'extreme thirst':         'excessive_hunger',
+    'very thirsty':           'excessive_hunger',
+    'weight loss':            'weight_loss',
+    'losing weight':          'weight_loss',
+    'increased appetite':     'increased_appetite',
+    'always hungry':          'excessive_hunger',
+
+    # ── Infectious / Meningeal ──────────────────────────────────────────────
+    'stiff neck':             'stiff_neck',
+    'neck stiffness':         'stiff_neck',
+    'sensitivity to light':   'visual_disturbances',
+    'light sensitive':        'visual_disturbances',
+    'photophobia':            'visual_disturbances',
     'wet cough':              'phlegm',
     'phlegm':                 'phlegm',
     'mucus':                  'phlegm',
@@ -722,6 +746,18 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'scratchy throat':        'throat_irritation',
     'blood in sputum':        'blood_in_sputum',
     'coughing blood':         'blood_in_sputum',
+
+    # ── Toxic / Foreign Body Ingestion ──────────────────────────────────────
+    'ate a crayon':           'swallowed_foreign_object',
+    'ate a blue crayon':      'swallowed_foreign_object',
+    'swallowed a crayon':     'swallowed_foreign_object',
+    'ate a battery':          'ingested_toxic_substance',
+    'swallowed a battery':    'ingested_toxic_substance',
+    'drank bleach':           'ingested_toxic_substance',
+    'swallowed glass':        'swallowed_foreign_object',
+    'ingested poison':        'ingested_toxic_substance',
+    'swallowed a coin':       'swallowed_foreign_object',
+    'ate something weird':    'swallowed_foreign_object',
 
     # ── Stomach / Digestive ──────────────────────────────────────────────────
     'nausea':                 'nausea',
@@ -1839,11 +1875,18 @@ async def predict_symptoms(request: SymptomRequest):
             )
 
     # ── Step 2: Parse & Validate Input Symptoms ────────────────────────────────
-    input_symptoms = normalize_input(data.symptoms, known_symptoms=metadata['all_symptoms'])
-    # Only keep symptoms that exist in the trained vocabulary
-    valid_features = [s for s in input_symptoms if s in metadata['all_symptoms']]
+    all_extracted_markers = normalize_input(data.symptoms, known_symptoms=metadata['all_symptoms'])
+    
+    # ── Step 2: Parse & Validate Input Symptoms ────────────────────────────────
+    all_extracted_markers = normalize_input(data.symptoms, known_symptoms=metadata['all_symptoms'])
+    
+    # ML model only sees symptoms it was trained on
+    valid_features = [s for s in all_extracted_markers if s in metadata['all_symptoms']]
+    
+    # Emergency overrides see EVERYTHING (including "virtual" safety markers)
+    emergency_override = check_emergency_override(all_extracted_markers)
 
-    if not valid_features:
+    if not valid_features and not emergency_override:
         return get_fallback_response(
             "We could not recognize any specific medical symptoms in your input."
         )
@@ -1885,9 +1928,8 @@ async def predict_symptoms(request: SymptomRequest):
         )
 
     # ── Step 5b: Emergency Override Check ───────────────────────────────────────
-    # CRITICAL: Before applying sparse-input penalties that could bury an
-    # emergency, check if definitive clinical markers trigger an override.
-    emergency_override = check_emergency_override(valid_features)
+    # Already checked at Step 2, but we keep the variable for logic below.
+    # emergency_override = check_emergency_override(all_extracted_markers)
 
     # ── Step 5c: Sparse Input Adjustments ─────────────────────────────────────
     # When few symptoms are provided, boost common diseases and penalize
