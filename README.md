@@ -84,5 +84,3 @@ For a detailed breakdown of the file system and internal logic, please refer to 
 
 ---
 
-*Developed with ❤️ by Sayak Mandal. Built for the future of digital health.*
-
