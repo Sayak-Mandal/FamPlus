@@ -76,6 +76,3 @@ A specialized Python microservice dedicated to clinical analysis:
 6. **Delivery**: The result is returned to the UI and optionally rendered into a **PDF Report**.
 
 ---
-
-*Structure valid as of May 2026. Maintainer: Sayak Mandal.*
-
