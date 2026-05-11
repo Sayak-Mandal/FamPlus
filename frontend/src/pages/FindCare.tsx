@@ -1,31 +1,102 @@
 
 import { Card, CardContent } from "@/components/ui/card"
-// Keep MapMarker type import if possible, or move it. 
-// Actually, MapMarker is exported from the file. We can import the type safely.
 import { MapMarker } from "@/components/map-component"
-import { MapPin, Search, Stethoscope, Loader2, Phone, Copy } from "lucide-react"
+import { MapPin, Search, Stethoscope, Loader2, Phone, Copy, AlertTriangle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { useState, useEffect } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useState, useEffect, useCallback } from "react"
+import { useSearchParams, useLocation } from "react-router-dom"
 
-import { analyzeSymptomsAndFindDoctors } from "@/app/actions/health"
-import { Doctor, doctors } from "@/lib/data/doctors"
+import { predictSpecialty } from "@/app/actions/health"
+import { Doctor, doctors as ALL_DOCTORS } from "@/lib/data/doctors"
 import { lazy, Suspense } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
 // Dynamically import MapComponent using React.lazy with Vite-compatible syntax
 const MapComponent = lazy(() => import("@/components/map-component").then((mod) => ({ default: mod.MapComponent })))
 
+/**
+ * Maps specialist names returned by the AI engine to the exact specialty strings
+ * used in the local doctors.ts database, with a priority-ordered list of fallbacks.
+ *
+ * For example, the AI might return "Pulmonologist" but the local list only has
+ * "General Physician" — in that case we show General Physicians rather than 0 results.
+ */
+const SPECIALIST_MATCH_MAP: Record<string, string[]> = {
+    // Exact matches first, then broader fallbacks
+    'Cardiologist':                    ['Cardiologist'],
+    'Neurologist':                     ['Neurologist'],
+    'Dermatologist':                   ['Dermatologist'],
+    'General Physician':               ['General Physician'],
+    'Pediatrician':                    ['Pediatrician'],
+    'Orthopedic':                      ['Orthopedic'],
+    'Ophthalmologist':                 ['Ophthalmologist'],
+    'Gastroenterologist':              ['Gastroenterologist'],
+    'Dentist':                         ['Dentist'],
+    'Psychiatrist':                    ['Psychiatrist'],
+    'ENT Specialist':                  ['ENT Specialist'],
+    'Sleep Specialist':                ['Sleep Specialist'],
+    'Hepatologist':                    ['Hepatologist'],
+    // Specialists not in local list → map to closest available
+    'Pulmonologist':                   ['General Physician'],
+    'Rheumatologist':                  ['Orthopedic', 'General Physician'],
+    'Endocrinologist':                 ['General Physician'],
+    'Allergist':                       ['General Physician'],
+    'Infectious Disease Specialist':   ['General Physician'],
+    'Urologist':                       ['General Physician'],
+    'Vascular Surgeon':                ['General Physician'],
+    'Emergency Physician / Toxicology': ['General Physician'],
+    'Professional Exorcist':           [],  // handled as easter egg
+}
+
+/**
+ * Finds the best-matching doctors from the local static list for a given specialist name.
+ * First tries an exact match, then tries the fallback chain in SPECIALIST_MATCH_MAP,
+ * and finally falls back to all General Physicians if nothing else matches.
+ */
+function findLocalDoctors(specialist: string): { doctors: Doctor[]; resolvedSpecialty: string } {
+    const normalized = specialist.trim()
+
+    // 1. Try exact match first
+    const exact = ALL_DOCTORS.filter(d => d.specialty.toLowerCase() === normalized.toLowerCase())
+    if (exact.length > 0) return { doctors: exact, resolvedSpecialty: normalized }
+
+    // 2. Try the fallback chain from SPECIALIST_MATCH_MAP
+    const chain = SPECIALIST_MATCH_MAP[normalized] ?? []
+    for (const fallback of chain) {
+        const fallbackDocs = ALL_DOCTORS.filter(d => d.specialty.toLowerCase() === fallback.toLowerCase())
+        if (fallbackDocs.length > 0) return { doctors: fallbackDocs, resolvedSpecialty: fallback }
+    }
+
+    // 3. Partial match — the AI may sometimes return e.g. "Cardiac Surgeon" or "Heart Specialist"
+    const partial = ALL_DOCTORS.filter(d =>
+        d.specialty.toLowerCase().includes(normalized.toLowerCase()) ||
+        normalized.toLowerCase().includes(d.specialty.toLowerCase())
+    )
+    if (partial.length > 0) return { doctors: partial, resolvedSpecialty: partial[0].specialty }
+
+    // 4. Ultimate fallback — show General Physicians so the list is never empty
+    const gp = ALL_DOCTORS.filter(d => d.specialty === 'General Physician')
+    return { doctors: gp, resolvedSpecialty: 'General Physician' }
+}
+
 function FindCareContent() {
     const [searchParams] = useSearchParams()
+    const location = useLocation()
     const initialSymptoms = searchParams.get("symptoms") || ""
+
+    // aiResult is passed from SymptomChecker via router state — it already has the
+    // correct specialist so we should use it directly, not re-call the AI.
+    const { aiResult } = location.state || {}
 
     const [symptoms, setSymptoms] = useState(initialSymptoms)
     const [loading, setLoading] = useState(false)
     const [result, setResult] = useState<{
         analysis: string
         specialty: string
-        doctors: any[]
+        resolvedSpecialty: string
+        doctors: Doctor[]
+        urgency?: string
     } | null>(null)
 
     const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -41,58 +112,114 @@ function FindCareContent() {
 
     const [selectedCategory, setSelectedCategory] = useState<string>("all")
 
-    // Get unique specialties
-    const specialties = Array.from(new Set(doctors.map(d => d.specialty))).sort()
+    // Get unique specialties from the local static list
+    const specialties = Array.from(new Set(ALL_DOCTORS.map(d => d.specialty))).sort()
 
-    // Auto-search on load if symptoms exist
-    useEffect(() => {
-        if (initialSymptoms) {
-            handleSearch(initialSymptoms)
-        } else {
-            // Initial load - show all or none? Let's show all for exploration
-            handleCategoryChange("all")
-        }
-    }, [initialSymptoms])
-
-    const handleSearch = async (query: string = symptoms) => {
-        if (!query.trim()) return
+    /**
+     * Core search handler.
+     * Priority:
+     *   1. If a specialist is explicitly provided (from aiResult), use it → local filter
+     *   2. Otherwise call the AI engine directly → local filter
+     */
+    const handleSearch = useCallback(async (
+        query: string = symptoms,
+        explicitSpecialist?: string,
+        explicitAnalysis?: string,
+        explicitUrgency?: string,
+    ) => {
+        if (!query.trim() && !explicitSpecialist) return
         setLoading(true)
-        setSelectedCategory("all") // Reset category on text search
+        setSelectedCategory("all")
 
         try {
-            const data = await analyzeSymptomsAndFindDoctors(query)
-            setResult(data)
+            let specialist = explicitSpecialist || ''
+            let analysis = explicitAnalysis || ''
+            let urgency = explicitUrgency || 'Normal'
+
+            if (!specialist) {
+                // No pre-computed specialist → call AI engine directly
+                console.log('[FindCare] No cached specialist — calling AI engine directly...')
+                const prediction = await predictSpecialty(query)
+                specialist = prediction.specialist
+                analysis = prediction.analysis
+                urgency = prediction.urgency
+            } else {
+                console.log(`[FindCare] Using cached specialist from aiResult: ${specialist}`)
+            }
+
+            // Always resolve doctors locally — never use MongoDB (it's empty for doctors)
+            const { doctors, resolvedSpecialty } = findLocalDoctors(specialist)
+
+            console.log(`[FindCare] specialist="${specialist}" → resolvedSpecialty="${resolvedSpecialty}" → ${doctors.length} doctors found`)
+
+            setResult({
+                analysis,
+                specialty: specialist,
+                resolvedSpecialty,
+                doctors,
+                urgency,
+            })
+
+            // Auto-center map on first doctor
+            if (doctors.length > 0) {
+                setMapCenter({ lat: doctors[0].lat, lng: doctors[0].lng })
+                setMapZoom(13)
+            }
         } catch (error) {
-            console.error("Failed to analyze symptoms", error)
+            console.error("FindCare search error:", error)
         } finally {
             setLoading(false)
         }
-    }
+    }, [symptoms])
+
+    // Auto-search on mount — use the aiResult from router state if available
+    useEffect(() => {
+        if (initialSymptoms) {
+            if (aiResult?.specialist) {
+                // Fast path: AI already ran in SymptomChecker, just filter locally
+                handleSearch(
+                    initialSymptoms,
+                    aiResult.specialist,
+                    `${aiResult.condition} — ${aiResult.advice}`,
+                    aiResult.urgency,
+                )
+            } else {
+                // No cached result — call AI engine
+                handleSearch(initialSymptoms)
+            }
+        } else {
+            // No symptoms query — show all doctors for exploration
+            handleCategoryChange("all")
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     const handleCategoryChange = (category: string) => {
         setSelectedCategory(category)
-        setSymptoms("") // Clear symptoms on category select
+        setSymptoms("")
 
         if (category === "all") {
             setResult({
                 analysis: "Showing all available specialists nearby.",
                 specialty: "All Specialists",
-                doctors: doctors
+                resolvedSpecialty: "All Specialists",
+                doctors: ALL_DOCTORS,
             })
             return
         }
 
-        const filtered = doctors.filter(d => d.specialty === category)
+        const filtered = ALL_DOCTORS.filter(d => d.specialty === category)
         setResult({
             analysis: `Showing all ${category}s nearby.`,
             specialty: category,
-            doctors: filtered
+            resolvedSpecialty: category,
+            doctors: filtered,
         })
     }
 
     const handleDoctorClick = (doctor: Doctor) => {
         setMapCenter({ lat: doctor.lat, lng: doctor.lng })
-        setMapZoom(15) // Zoom in closer
+        setMapZoom(15)
     }
 
     const markers: MapMarker[] = result?.doctors.map(doc => ({
@@ -103,6 +230,8 @@ function FindCareContent() {
         address: doc.address
     })) || []
 
+    const isEmergency = result?.urgency === 'Emergency' || result?.urgency === 'High'
+
     return (
         <div className="space-y-4 h-[calc(100vh-9rem)] flex flex-col overflow-hidden">
             <div className="flex flex-col gap-1 shrink-0">
@@ -112,6 +241,21 @@ function FindCareContent() {
                 </h2>
                 <p className="text-sm text-muted-foreground">Locate top-rated hospitals and specialists near you.</p>
             </div>
+
+            {/* Emergency Banner */}
+            {isEmergency && (
+                <div className="shrink-0 bg-red-500/10 border border-red-500/40 rounded-xl p-3 flex gap-3 items-center animate-in fade-in slide-in-from-top-2">
+                    <div className="bg-red-500 p-2 rounded-full animate-pulse shrink-0">
+                        <AlertTriangle className="h-4 w-4 text-white" />
+                    </div>
+                    <div>
+                        <p className="font-bold text-red-600 dark:text-red-400 text-sm">Emergency Situation Detected</p>
+                        <p className="text-xs text-red-600/80 dark:text-red-400/80">
+                            Seek emergency care immediately. Call 112 or go to the nearest hospital.
+                        </p>
+                    </div>
+                </div>
+            )}
 
             {/* Search Bar & Filters */}
             <Card className="bg-card border shadow-sm shrink-0 relative z-20 overflow-visible">
@@ -150,12 +294,25 @@ function FindCareContent() {
 
             {/* AI Analysis Result */}
             {result && (
-                <div className="shrink-0 bg-primary/10 border border-primary/20 rounded-xl p-4 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2">
-                    <div className="bg-primary/20 p-2 rounded-full h-8 w-8 flex items-center justify-center shrink-0">
-                        <Stethoscope className="h-4 w-4 text-primary" />
+                <div className={`shrink-0 border rounded-xl p-4 flex gap-3 text-sm animate-in fade-in slide-in-from-top-2 ${
+                    isEmergency
+                        ? 'bg-red-500/10 border-red-500/30'
+                        : 'bg-primary/10 border-primary/20'
+                }`}>
+                    <div className={`p-2 rounded-full h-8 w-8 flex items-center justify-center shrink-0 ${
+                        isEmergency ? 'bg-red-500/20' : 'bg-primary/20'
+                    }`}>
+                        <Stethoscope className={`h-4 w-4 ${isEmergency ? 'text-red-500' : 'text-primary'}`} />
                     </div>
                     <div>
-                        <p className="font-bold text-primary">Recommendation: {result.specialty}</p>
+                        <p className={`font-bold ${isEmergency ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>
+                            Recommendation: {result.specialty}
+                            {result.resolvedSpecialty !== result.specialty && (
+                                <span className="text-xs font-normal text-muted-foreground ml-2">
+                                    (showing {result.resolvedSpecialty}s near you)
+                                </span>
+                            )}
+                        </p>
                         <p className="text-foreground/80">{result.analysis}</p>
                     </div>
                 </div>
@@ -168,12 +325,21 @@ function FindCareContent() {
                 <Card className="col-span-1 border shadow-sm bg-card rounded-xl overflow-hidden flex flex-col h-full">
                     <div className="p-3 border-b font-semibold text-base flex items-center justify-between bg-muted/30 shrink-0">
                         <span>Doctors Nearby</span>
-                        <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                            (result?.doctors.length ?? 0) > 0
+                                ? 'bg-primary/10 text-primary'
+                                : 'bg-muted text-muted-foreground'
+                        }`}>
                             {result?.doctors.length || 0} Found
                         </span>
                     </div>
                     <CardContent className="p-0 overflow-y-auto flex-1 custom-scrollbar">
-                        {!result ? (
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center">
+                                <Loader2 className="h-12 w-12 mb-4 animate-spin opacity-50" />
+                                <p>Analyzing your symptoms... This may take a moment.</p>
+                            </div>
+                        ) : !result ? (
                             <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-8 text-center">
                                 <Search className="h-12 w-12 mb-4 opacity-20" />
                                 <p>Describe your symptoms to find recommended specialists.</p>
@@ -189,7 +355,6 @@ function FindCareContent() {
                                         key={doctor.id}
                                         onClick={() => {
                                             handleDoctorClick(doctor)
-                                            // Scroll to map on mobile/small screens
                                             const mapElement = document.getElementById('map-section')
                                             if (mapElement) {
                                                 mapElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -223,35 +388,35 @@ function FindCareContent() {
                                             )}
                                             <div className="flex flex-wrap gap-2 mt-1">
                                                 {doctor.phone && (
-                                                    <span 
+                                                    <span
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            handleCopy(doctor.phone, `phone-${doctor.id || doctor._id}`);
+                                                            handleCopy(doctor.phone, `phone-${doctor.id}`);
                                                         }}
                                                         className="flex items-center gap-1 font-mono tracking-tight bg-muted/40 hover:bg-muted/80 p-1 px-1.5 rounded-md w-fit transition-colors"
                                                         title="Click to copy phone number"
                                                     >
                                                         <Phone className="h-3 w-3 shrink-0" />
-                                                        {copiedId === `phone-${doctor.id || doctor._id}` ? "Copied!" : doctor.phone}
+                                                        {copiedId === `phone-${doctor.id}` ? "Copied!" : doctor.phone}
                                                     </span>
                                                 )}
                                                 {doctor.address && (
                                                     <div className="flex gap-2 mt-1">
-                                                        <span 
+                                                        <span
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                handleCopy(doctor.address, `addr-${doctor.id || doctor._id}`);
+                                                                handleCopy(doctor.address, `addr-${doctor.id}`);
                                                             }}
                                                             className="flex items-center gap-1 bg-primary/10 hover:bg-primary/20 text-primary p-1 px-1.5 rounded-md w-fit transition-colors"
                                                             title="Click to copy address"
                                                         >
                                                             <Copy className="h-3 w-3 shrink-0" />
-                                                            {copiedId === `addr-${doctor.id || doctor._id}` ? "Address Copied!" : "Copy Address"}
+                                                            {copiedId === `addr-${doctor.id}` ? "Address Copied!" : "Copy Address"}
                                                         </span>
-                                                        <span 
+                                                        <span
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
-                                                                const id = `nav-${doctor.id || doctor._id}`;
+                                                                const id = `nav-${doctor.id}`;
                                                                 setCopiedId(id);
                                                                 setTimeout(() => {
                                                                     setCopiedId(null);
@@ -265,7 +430,7 @@ function FindCareContent() {
                                                             title="Navigate with Google Maps"
                                                         >
                                                             <MapPin className="h-3 w-3 shrink-0" />
-                                                            {copiedId === `nav-${doctor.id || doctor._id}` ? "Opening Google Maps..." : "Get Directions"}
+                                                            {copiedId === `nav-${doctor.id}` ? "Opening Google Maps..." : "Get Directions"}
                                                         </span>
                                                     </div>
                                                 )}

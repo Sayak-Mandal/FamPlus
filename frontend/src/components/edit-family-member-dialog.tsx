@@ -42,7 +42,7 @@ const AVATAR_SEEDS = [
 export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDialogProps) {
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
-    const [showAllAvatars, setShowAllAvatars] = useState(false)
+    const [isEditingAvatar, setIsEditingAvatar] = useState(false)
     const [formData, setFormData] = useState({
         name: member.name,
         age: member.age.toString(),
@@ -59,7 +59,7 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
 
     useEffect(() => {
         if (!open) {
-            setShowAllAvatars(false)
+            setIsEditingAvatar(false)
             setFormData({
                 name: member.name,
                 age: member.age.toString(),
@@ -73,9 +73,6 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                 water: member.water?.toString() || "",
                 activeCalories: member.activeCalories?.toString() || "",
             })
-        } else {
-            const hasHiddenAvatar = Boolean(member.avatar && !AVATAR_SEEDS.slice(0, 3).some(seed => member.avatar === `https://api.dicebear.com/7.x/notionists/svg?seed=${seed}&backgroundColor=transparent`))
-            setShowAllAvatars(hasHiddenAvatar)
         }
     }, [open, member])
 
@@ -115,6 +112,22 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl p-0 overflow-hidden border-none shrink-0 border">
+                <button
+                    type="button"
+                    onClick={() => setIsEditingAvatar(!isEditingAvatar)}
+                    className="absolute right-12 top-3.5 z-10 group h-12 w-12 shrink-0 rounded-full overflow-hidden transition-all hover:ring-2 hover:ring-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-pastel-blue"
+                >
+                    {formData.avatar ? (
+                        <img src={formData.avatar} alt="avatar" className="w-full h-full object-cover pt-1" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center font-bold text-lg bg-primary/20 text-primary">
+                            {formData.name?.[0] || 'A'}
+                        </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Pencil className="h-4 w-4 text-white" />
+                    </div>
+                </button>
                 <div className="p-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
                     <DialogHeader>
                         <DialogTitle>Edit Profile & Vitals</DialogTitle>
@@ -159,42 +172,34 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                             </div>
                         </div>
 
-                        <div className="border-t pt-4 mt-2">
-                            <Label className="text-sm font-medium mb-3 block text-muted-foreground">Select Cartoon Profile</Label>
-                            <div className="flex flex-wrap gap-3 pb-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, avatar: '' })}
-                                    className={`h-16 w-16 shrink-0 rounded-full flex items-center justify-center font-bold text-lg transition-all ${!formData.avatar ? 'ring-2 ring-primary ring-offset-2 bg-primary/20 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
-                                >
-                                    {formData.name?.[0] || 'A'}
-                                </button>
-                                {(showAllAvatars ? AVATAR_SEEDS : AVATAR_SEEDS.slice(0, 3)).map((seed) => {
-                                    const url = `https://api.dicebear.com/7.x/notionists/svg?seed=${seed}&backgroundColor=transparent`;
-                                    const isSelected = formData.avatar === url;
-                                    return (
-                                        <button
-                                            key={seed}
-                                            type="button"
-                                            onClick={() => setFormData({ ...formData, avatar: url })}
-                                            className={`h-16 w-16 shrink-0 rounded-full overflow-hidden transition-all bg-pastel-blue ${isSelected ? 'ring-2 ring-primary ring-offset-2' : 'hover:ring-2 hover:ring-primary/50'}`}
-                                        >
-                                            <img src={url} alt="avatar" className="w-full h-full object-cover pt-1" />
-                                        </button>
-                                    );
-                                })}
-                                {!showAllAvatars && (
+                        {isEditingAvatar && (
+                            <div className="border-t pt-4 mt-2 animate-in fade-in slide-in-from-top-2">
+                                <Label className="text-sm font-medium mb-3 block text-muted-foreground">Select Cartoon Profile</Label>
+                                <div className="flex flex-wrap gap-3 pb-2">
                                     <button
                                         type="button"
-                                        onClick={() => setShowAllAvatars(true)}
-                                        className="h-16 w-16 shrink-0 rounded-full flex flex-col items-center justify-center transition-all bg-muted text-muted-foreground hover:bg-muted/80 text-xs font-medium"
+                                        onClick={() => { setFormData({ ...formData, avatar: '' }); setIsEditingAvatar(false); }}
+                                        className={`h-16 w-16 shrink-0 rounded-full flex items-center justify-center font-bold text-lg transition-all ${!formData.avatar ? 'ring-2 ring-primary ring-offset-2 bg-primary/20 text-primary' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
                                     >
-                                        <span>+{AVATAR_SEEDS.length - 3}</span>
-                                        <span>More</span>
+                                        {formData.name?.[0] || 'A'}
                                     </button>
-                                )}
+                                    {AVATAR_SEEDS.map((seed) => {
+                                        const url = `https://api.dicebear.com/7.x/notionists/svg?seed=${seed}&backgroundColor=transparent`;
+                                        const isSelected = formData.avatar === url;
+                                        return (
+                                            <button
+                                                key={seed}
+                                                type="button"
+                                                onClick={() => { setFormData({ ...formData, avatar: url }); setIsEditingAvatar(false); }}
+                                                className={`h-16 w-16 shrink-0 rounded-full overflow-hidden transition-all bg-pastel-blue ${isSelected ? 'ring-2 ring-primary ring-offset-2' : 'hover:ring-2 hover:ring-primary/50'}`}
+                                            >
+                                                <img src={url} alt="avatar" className="w-full h-full object-cover pt-1" />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         <div className="border-t pt-4 mt-2">
                             <p className="text-sm font-medium mb-3 text-muted-foreground">Current Vitals</p>

@@ -15,8 +15,6 @@ import { getFamilyMembers, logSymptom } from '@/app/actions/health'
 import { Link } from "react-router-dom";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } from 'docx';
-import { saveAs } from 'file-saver';
 
 /**
  * 🏥 SymptomChecker Component
@@ -82,12 +80,14 @@ export function SymptomChecker() {
             setVitalsStatus('none')
             return
         }
-        const updatedAt = selectedMemberData.updatedAt
-        if (!updatedAt) {
+        // Use latestVitalAt — the actual recordedAt of the most recent VitalLog entry.
+        // FamilyMember.updatedAt reflects document edits (e.g. seeding), NOT vital logging.
+        const latestVitalAt = selectedMemberData.latestVitalAt
+        if (!latestVitalAt) {
             setVitalsStatus('none')
             return
         }
-        const ageMinutes = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000)
+        const ageMinutes = Math.floor((Date.now() - new Date(latestVitalAt).getTime()) / 60000)
         setVitalsStatus(ageMinutes <= VITALS_FRESHNESS_LIMIT ? 'fresh' : 'stale')
     }, [selectedMember, selectedMemberData])
 
@@ -98,10 +98,13 @@ export function SymptomChecker() {
     const buildVitalsContext = (): VitalsContext | undefined => {
         if (!selectedMemberData) return undefined
 
-        const updatedAt = selectedMemberData.updatedAt
-        if (!updatedAt) return undefined
+        // Use latestVitalAt — the actual recordedAt of the most recent VitalLog.
+        // Vitals older than 3 hours (VITALS_FRESHNESS_LIMIT = 180 min) are rejected
+        // by both the UI badge AND the Python AI engine backend.
+        const latestVitalAt = selectedMemberData.latestVitalAt
+        if (!latestVitalAt) return undefined
 
-        const ageMinutes = Math.floor((Date.now() - new Date(updatedAt).getTime()) / 60000)
+        const ageMinutes = Math.floor((Date.now() - new Date(latestVitalAt).getTime()) / 60000)
 
         // Always send the context — the backend will decide if it's fresh enough.
         // This way the backend can still return a "data too old" message in vitals_analysis.
@@ -207,8 +210,8 @@ export function SymptomChecker() {
             if (selectedMemberData.sleep) vitalsBody.push(['Sleep (Last Night)', `${selectedMemberData.sleep}`]);
             
             // Add Timestamp for Reliability
-            if (selectedMemberData.updatedAt) {
-                const recordedAt = new Date(selectedMemberData.updatedAt).toLocaleString();
+            if (selectedMemberData.latestVitalAt) {
+                const recordedAt = new Date(selectedMemberData.latestVitalAt).toLocaleString();
                 vitalsBody.push(['Recorded At', recordedAt]);
             }
 
@@ -288,116 +291,6 @@ export function SymptomChecker() {
         doc.save(`Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.pdf`);
     };
 
-    /**
-     * Generates a professional health report in DOCX format.
-     */
-    const handleDownloadDOCX = () => {
-        if (!result) return;
-
-        const patientName = selectedMemberData?.name || "Anonymous User";
-        const date = new Date().toLocaleString();
-
-        const doc = new Document({
-            sections: [{
-                properties: {},
-                children: [
-                    new Paragraph({
-                        text: "FAMPLUS HEALTH REPORT",
-                        heading: HeadingLevel.HEADING_1,
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 200 },
-                    }),
-                    new Paragraph({
-                        children: [
-                            new TextRun({ text: "AI Diagnostic Support Engine - Preliminary Report", bold: true }),
-                        ],
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 100 },
-                    }),
-                    new Paragraph({
-                        text: `Generated: ${date}`,
-                        alignment: AlignmentType.CENTER,
-                        spacing: { after: 400 },
-                    }),
-
-                    new Paragraph({ text: "Patient Information", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-                    new Paragraph({ children: [new TextRun({ text: "Patient Name: ", bold: true }), new TextRun(patientName)] }),
-                    new Paragraph({ children: [new TextRun({ text: "Reported Symptoms: ", bold: true }), new TextRun(symptoms)] }),
-
-                    ...(selectedMemberData && vitalsStatus === 'fresh' ? [
-                        new Paragraph({ text: "Recorded Vitals", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-                        new Paragraph({ children: [new TextRun({ text: "Heart Rate: ", bold: true }), new TextRun(`${selectedMemberData.heartRate} bpm`)] }),
-                        new Paragraph({ children: [new TextRun({ text: "Blood Pressure: ", bold: true }), new TextRun(`${selectedMemberData.bloodPressure} mmHg`)] }),
-                        new Paragraph({ children: [new TextRun({ text: "Sleep: ", bold: true }), new TextRun(`${selectedMemberData.sleep}`)] }),
-                        ...(selectedMemberData.updatedAt ? [
-                            new Paragraph({ 
-                                children: [
-                                    new TextRun({ text: "Recorded At: ", bold: true, color: "475569" }), 
-                                    new TextRun({ text: new Date(selectedMemberData.updatedAt).toLocaleString(), color: "475569" })
-                                ] 
-                            })
-                        ] : []),
-                    ] : []),
-
-                    new Paragraph({ text: "AI Assessment", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-                    new Table({
-                        width: { size: 100, type: WidthType.PERCENTAGE },
-                        rows: [
-                            new TableRow({
-                                children: [
-                                    new TableCell({ children: [new Paragraph({ text: "Condition Match", bold: true })] }),
-                                    new TableCell({ children: [new Paragraph(result.condition)] }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({ children: [new Paragraph({ text: "Confidence", bold: true })] }),
-                                    new TableCell({ children: [new Paragraph(`${result.confidence}%`)] }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({ children: [new Paragraph({ text: "Urgency Level", bold: true })] }),
-                                    new TableCell({ children: [new Paragraph(result.urgency || 'Normal')] }),
-                                ],
-                            }),
-                            new TableRow({
-                                children: [
-                                    new TableCell({ children: [new Paragraph({ text: "Recommended Specialist", bold: true })] }),
-                                    new TableCell({ children: [new Paragraph(result.specialist || 'General Physician')] }),
-                                ],
-                            }),
-                        ],
-                    }),
-
-                    new Paragraph({ text: "Clinical Guidance", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-                    new Paragraph({ text: result.advice }),
-
-                    ...((result.precautions || result.next_steps) ? [
-                        new Paragraph({ text: "Recommendations", heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-                        ...(result.precautions || result.next_steps || []).map(item => new Paragraph({ text: `• ${item}`, bullet: { level: 0 } }))
-                    ] : []),
-
-                    new Paragraph({
-                        spacing: { before: 800 },
-                        children: [
-                            new TextRun({
-                                text: "WARNING: This report was generated by an Artificial Intelligence engine and is NOT a definitive medical diagnosis. It is intended for informational purposes only. Please present this document to a qualified medical professional for proper clinical evaluation and diagnosis.",
-                                color: "FF0000",
-                                size: 16,
-                                bold: true,
-                            }),
-                        ],
-                    }),
-                ],
-            }],
-        });
-
-        Packer.toBlob(doc).then(blob => {
-            saveAs(blob, `Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.docx`);
-        });
-    };
-
     return (
         <Card className="w-full border-none shadow-sm bg-card overflow-hidden relative">
             <div className="absolute top-0 right-0 p-6 opacity-3">
@@ -445,7 +338,13 @@ export function SymptomChecker() {
                                         <HeartPulse className="h-3 w-3" />
                                         Live vitals active
                                         <span className="opacity-70 ml-1">
-                                            ({Math.floor((Date.now() - new Date(selectedMemberData.updatedAt).getTime()) / 60000)}m ago)
+                                            {(() => {
+                                                const ageMin = Math.floor((Date.now() - new Date(selectedMemberData.latestVitalAt).getTime()) / 60000);
+                                                if (ageMin < 60) return `(${ageMin}m ago)`;
+                                                const ageHr = Math.floor(ageMin / 60);
+                                                const remMin = ageMin % 60;
+                                                return remMin > 0 ? `(${ageHr}h ${remMin}m ago)` : `(${ageHr}h ago)`;
+                                            })()}
                                         </span>
                                         {selectedMemberData.heartRate > 0 && (
                                             <span className="opacity-70 ml-1">• {selectedMemberData.heartRate} bpm</span>
@@ -490,7 +389,9 @@ export function SymptomChecker() {
                             <div className="bg-muted/30 p-8 rounded-[2rem] space-y-6 border border-border/50 backdrop-blur-sm relative overflow-hidden">
                                 <div className="space-y-2">
                                     <p className="text-xs font-black text-primary uppercase tracking-[0.2em]">Possible Indications</p>
-                                    <h3 className="text-3xl font-black text-foreground tracking-tight leading-none">{result.condition}</h3>
+                                    <h3 className="text-3xl font-black text-foreground tracking-tight leading-none">
+                                        {result.condition === 'Top_Matches' ? 'Complex Indication' : result.condition.replace(/_/g, ' ')}
+                                    </h3>
                                 </div>
                                 
                                 <div className="space-y-3">
@@ -526,14 +427,21 @@ export function SymptomChecker() {
                             </div>
 
                             {/* Action/Urgency Card */}
-                            <div className={`p-8 rounded-[2rem] border-2 space-y-6 transition-all duration-500 shadow-xl ${result.urgency === 'High'
-                                ? 'bg-red-500/5 border-red-500/50 shadow-red-500/10'
-                                : 'bg-primary/5 border-primary/20 shadow-primary/5'
+                            <div className={`p-8 rounded-[2rem] border-2 space-y-6 transition-all duration-500 shadow-xl ${
+                                result.urgency === 'Emergency'
+                                    ? 'bg-red-500/10 border-red-500/50 shadow-red-500/20'
+                                    : result.urgency === 'High'
+                                    ? 'bg-orange-500/10 border-orange-500/50 shadow-orange-500/10'
+                                    : 'bg-primary/5 border-primary/20 shadow-primary/5'
                                 }`}>
                                 <div className="space-y-4">
                                     <div className="flex items-center gap-2">
-                                        {result.urgency === 'High' ? (
-                                            <div className="bg-red-500 text-white p-1.5 rounded-lg animate-pulse">
+                                        {result.urgency === 'Emergency' ? (
+                                            <div className="bg-red-500 text-white p-1.5 rounded-lg animate-pulse shadow-lg shadow-red-500/50">
+                                                <AlertTriangle className="h-5 w-5" />
+                                            </div>
+                                        ) : result.urgency === 'High' ? (
+                                            <div className="bg-orange-500 text-white p-1.5 rounded-lg shadow-lg shadow-orange-500/30">
                                                 <AlertTriangle className="h-5 w-5" />
                                             </div>
                                         ) : (
@@ -541,12 +449,19 @@ export function SymptomChecker() {
                                                 <Activity className="h-5 w-5" />
                                             </div>
                                         )}
-                                        <p className={`text-xs font-black uppercase tracking-[0.2em] ${result.urgency === 'High' ? 'text-red-500' : 'text-primary'}`}>
-                                            {result.urgency === 'High' ? 'Immediate Attention Required' : 'Standard Guidance'}
+                                        <p className={`text-xs font-black uppercase tracking-[0.2em] ${
+                                            result.urgency === 'Emergency' ? 'text-red-500' :
+                                            result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                        }`}>
+                                            {result.urgency === 'Emergency' ? 'CRITICAL MEDICAL ALERT' :
+                                             result.urgency === 'High' ? 'IMMEDIATE ATTENTION REQUIRED' : 'STANDARD GUIDANCE'}
                                         </p>
                                     </div>
                                     
-                                    <p className="text-xl font-bold leading-tight">
+                                    <p className={`text-base leading-relaxed tracking-tight ${
+                                        result.urgency === 'Emergency' ? 'font-bold text-red-950 dark:text-red-100' : 
+                                        result.urgency === 'High' ? 'font-semibold text-orange-950 dark:text-orange-100' : 'font-medium text-foreground/80'
+                                    }`}>
                                         {result.advice}
                                     </p>
 
@@ -558,21 +473,42 @@ export function SymptomChecker() {
                                 </div>
 
                                 {((result.precautions && result.precautions.length > 0) || (result.next_steps && result.next_steps.length > 0)) && (
-                                    <div className="space-y-3 p-5 bg-background/50 rounded-3xl border border-border/50">
+                                    <div className={`space-y-3 p-5 rounded-3xl border ${
+                                        result.urgency === 'Emergency' ? 'bg-red-500/5 border-red-500/30' :
+                                        result.urgency === 'High' ? 'bg-orange-500/5 border-orange-500/30' :
+                                        'bg-background/50 border-border/50'
+                                    }`}>
                                         <div className="flex items-center gap-2 mb-1">
                                             {result.precautions && result.precautions.length > 0 ? (
-                                                <ShieldCheck className="h-4 w-4 text-primary" />
+                                                <ShieldCheck className={`h-4 w-4 ${
+                                                    result.urgency === 'Emergency' ? 'text-red-500' :
+                                                    result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                                }`} />
                                             ) : (
-                                                <ListChecks className="h-4 w-4 text-primary" />
+                                                <ListChecks className={`h-4 w-4 ${
+                                                    result.urgency === 'Emergency' ? 'text-red-500' :
+                                                    result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                                }`} />
                                             )}
-                                            <p className="text-[10px] font-black uppercase tracking-tighter text-primary">
-                                                {result.precautions && result.precautions.length > 0 ? "Standard Precautions" : "Suggested Next Steps"}
+                                            <p className={`text-[10px] font-black uppercase tracking-tighter ${
+                                                result.urgency === 'Emergency' ? 'text-red-500' :
+                                                result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                            }`}>
+                                                {result.precautions && result.precautions.length > 0 ? 
+                                                    (result.urgency === 'Emergency' ? "EMERGENCY PRECAUTIONS" : "STANDARD PRECAUTIONS") : 
+                                                    "SUGGESTED NEXT STEPS"}
                                             </p>
                                         </div>
                                         <ul className="space-y-2">
                                             {(result.precautions && result.precautions.length > 0 ? result.precautions : result.next_steps)?.map((item, i) => (
-                                                <li key={i} className="text-sm font-bold flex items-center gap-2">
-                                                    <div className="h-1.5 w-1.5 rounded-full bg-primary/40" />
+                                                <li key={i} className={`text-sm font-bold flex items-center gap-2 ${
+                                                    result.urgency === 'Emergency' ? 'text-red-900 dark:text-red-200' :
+                                                    result.urgency === 'High' ? 'text-orange-900 dark:text-orange-200' : 'text-foreground'
+                                                }`}>
+                                                    <div className={`h-1.5 w-1.5 rounded-full ${
+                                                        result.urgency === 'Emergency' ? 'bg-red-500' :
+                                                        result.urgency === 'High' ? 'bg-orange-500' : 'bg-primary/40'
+                                                    }`} />
                                                     {item}
                                                 </li>
                                             ))}
@@ -585,7 +521,7 @@ export function SymptomChecker() {
                                         className={`w-full h-14 rounded-2xl gap-3 text-lg font-black tracking-tight ${result.urgency === 'High' ? 'bg-red-500 hover:bg-red-600 text-white' : ''}`}
                                         asChild
                                     >
-                                        <Link to={`/find-care?symptoms=${encodeURIComponent(symptoms)}`}>
+                                        <Link to={`/find-care?symptoms=${encodeURIComponent(symptoms)}`} state={{ aiResult: result }}>
                                             <MapPin className="h-5 w-5" />
                                             {result.urgency === 'High' ? 'Find Emergency Care' : `Locate ${result.specialist || 'General Physician'}`}
                                         </Link>
@@ -598,15 +534,6 @@ export function SymptomChecker() {
                                     >
                                         <Download className="h-5 w-5" />
                                         Download AI Report (PDF)
-                                    </Button>
-
-                                    <Button
-                                        variant="outline"
-                                        className="w-full h-14 rounded-2xl gap-3 text-lg font-bold border-2 bg-background hover:bg-muted text-foreground"
-                                        onClick={handleDownloadDOCX}
-                                    >
-                                        <Download className="h-5 w-5" />
-                                        Download AI Report (DOCX)
                                     </Button>
                                 </div>
                             </div>

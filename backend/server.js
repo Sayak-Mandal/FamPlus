@@ -100,7 +100,7 @@ mongoose.connect(MONGODB_URI, {
   });
 
 // ==============================================================================
-# SECTION: SYSTEM INITIALIZATION & SEEDING
+// SECTION: SYSTEM INITIALIZATION & SEEDING
 // ==============================================================================
 
 /**
@@ -398,6 +398,7 @@ app.get('/api/family', requireAuth, async (req, res) => {
           ...member.toObject(),
           weight: latestLog ? latestLog.weight : 0,
           height: latestLog ? latestLog.height : 0,
+          latestVitalAt: latestLog ? latestLog.recordedAt : null, // True vitals timestamp
         };
       }));
 
@@ -543,7 +544,7 @@ app.delete('/api/vitals/:logId', requireAuth, async (req, res) => {
 });
 
 // ==============================================================================
-# SECTION: AI ENGINE INTEGRATION (INFERENCE PROXIES)
+// SECTION: AI ENGINE INTEGRATION (INFERENCE PROXIES)
 // ==============================================================================
 
 /**
@@ -603,12 +604,19 @@ app.get('/api/doctors', requireAuth, async (req, res) => {
  */
 app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
   try {
-    const { symptoms } = req.body;
-    if (!symptoms) return res.status(400).json({ error: 'Symptoms required' });
+    const { symptoms, providedSpecialist, providedAnalysis } = req.body;
+    if (!symptoms && !providedSpecialist) return res.status(400).json({ error: 'Symptoms or specialist required' });
 
-    // AI Prediction -> Specialty Matching
-    const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms });
-    const { condition, advice, specialist } = aiRes.data;
+    let specialist = providedSpecialist || '';
+    let analysis = providedAnalysis || '';
+
+    if (!specialist) {
+      // AI Prediction -> Specialty Matching
+      const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms });
+      specialist = aiRes.data.specialist;
+      // analysis is now built from scoped variables (not condition/advice which were never declared)
+      analysis = `${aiRes.data.condition} — ${aiRes.data.advice}`;
+    }
 
     let doctors = await Doctor.find({
       specialty: { $regex: specialist, $options: 'i' }
@@ -616,7 +624,7 @@ app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
 
     // Fallback: if no specific specialist found, return General Physicians
     if (doctors.length === 0) {
-      console.log(`No doctors found for "${specialist}". Falling back to General Physician.`);
+      console.log(`No doctors found for "${specialist}" in DB. Note: most doctors are in the frontend static list.`);
       doctors = await Doctor.find({
         specialty: { $regex: 'General Physician', $options: 'i' }
       }).limit(5);
@@ -637,7 +645,9 @@ app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
       }];
     }
 
-    res.json({ analysis: `${condition} — ${advice}`, specialty: specialist, doctors });
+    // Fixed: use the `analysis` variable (declared in outer scope) instead of
+    // the undefined `condition` and `advice` variables that caused a ReferenceError.
+    res.json({ analysis, specialty: specialist, doctors });
   } catch (err) {
     console.error('Doctor analysis error:', err.message);
     const allDoctors = await Doctor.find().limit(5);

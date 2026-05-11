@@ -123,10 +123,12 @@ _ollama_last_check: float = 0
 # Diseases considered "scary" that must NOT be shown unless confidence is
 # above SCARY_CONFIDENCE_THRESHOLD AND the user has at least one required marker.
 SCARY_DISEASES: Dict[str, List[str]] = {
-    'Paralysis (brain hemorrhage)': ['weakness_of_one_body_side', 'altered_sensorium', 'slurred_speech', 'loss_of_balance'],
+    'Paralysis (brain hemorrhage)': ['weakness_of_one_body_side', 'altered_sensorium', 'slurred_speech',
+                                     'loss_of_balance', 'facial_droop', 'arm_weakness'],
     'Heart attack':                 ['chest_pain', 'breathlessness', 'palpitations', 'fast_heart_rate',
                                      'crushing_chest_pain', 'left_arm_pain', 'jaw_pain', 'cold_sweat',
-                                     'chest_tightness', 'sudden_chest_pain'],
+                                     'chest_tightness', 'sudden_chest_pain', 'arm_weakness',
+                                     'cold_hands_and_feets', 'chest_pressure'],
     'AIDS':                         ['high_fever', 'fatigue', 'weight_loss', 'extra_marital_contacts'],
     'Tuberculosis':                 ['blood_in_sputum', 'chest_pain', 'cough', 'rusty_sputum'],
     'Dengue':                       ['high_fever', 'pain_behind_the_eyes', 'red_spots_over_body'],
@@ -341,9 +343,21 @@ SCARY_CONFIDENCE_THRESHOLD = 0.72   # 72% — lowered from 82% after clinical da
 # 0.03 = drastically reduce its probability so a common disease wins instead.
 SCARY_PENALTY_MULTIPLIER   = 0.03
 
-# Boost multiplier applied to scary diseases when their markers ARE present.
-# This helps counteract the diluted model signal from noisy training data.
-MARKER_PRESENT_BOOST = 3.5
+# Per-disease boost multipliers applied when hallmark markers are present.
+# Cardiac and stroke conditions need the strongest boost because the training data
+# for these conditions is heavily diluted by the other 40+ diseases, causing the
+# model to underestimate their probability even when clear markers are reported.
+DISEASE_SPECIFIC_BOOSTS: Dict[str, float] = {
+    'Heart attack':                 6.0,   # Most suppressed — cardiac markers must win
+    'Paralysis (brain hemorrhage)': 5.0,   # Stroke markers are very specific
+    'Dengue':                       4.0,   # Hallmark triad (fever + eye pain + rash)
+    'Tuberculosis':                 3.5,   # Blood in sputum is highly specific
+    'Malaria':                      3.5,   # Chills + shivering + high fever triad
+    'Pneumonia':                    3.0,
+    'Hepatitis B':                  3.0,
+}
+# Default boost for diseases not in the table above
+DEFAULT_MARKER_BOOST = 2.8
 
 # Diseases that are common/benign and should be preferred in ambiguous cases.
 # These get a mild boost to edge out scary false positives.
@@ -1039,6 +1053,140 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'irregular heart':        'palpitations',
     'swollen glands':         'swelled_lymph_nodes',
     'lymph nodes':            'swelled_lymph_nodes',
+
+    # ── Extended Cardiac Aliases (v5) ─────────────────────────────────────────
+    # Critical additions — these phrases were causing emergency overrides to miss
+    # because the tokens weren't being extracted by the NLP pipeline.
+    'my chest feels heavy':               'crushing_chest_pain',
+    'chest feels heavy':                  'crushing_chest_pain',
+    'heavy feeling in chest':             'crushing_chest_pain',
+    'heaviness in chest':                 'crushing_chest_pain',
+    'feel like something sitting on my chest': 'crushing_chest_pain',
+    'something sitting on my chest':      'crushing_chest_pain',
+    'elephant on my chest':               'crushing_chest_pain',
+    'weight on my chest':                 'crushing_chest_pain',
+    'tight feeling in chest':             'chest_tightness',
+    'chest feels tight':                  'chest_tightness',
+    'pressure on my chest':               'chest_pressure',
+    'chest pressure':                     'chest_pressure',
+    'pressure in my chest':               'chest_pressure',
+    'my heart is beating weird':          'palpitations',
+    'heart beating weird':                'palpitations',
+    'heart feels weird':                  'palpitations',
+    'heart is skipping':                  'palpitations',
+    'heart skipping beats':               'palpitations',
+    'heart is stopping':                  'palpitations',
+    'feel like i am dying':               'crushing_chest_pain',
+    'feel like im dying':                 'crushing_chest_pain',
+    'feel like i am having a heart attack': 'crushing_chest_pain',
+    'think i am having a heart attack':   'crushing_chest_pain',
+    'cant catch my breath':               'breathlessness',
+    'cannot catch my breath':             'breathlessness',
+    'out of breath':                      'breathlessness',
+    'cant breathe properly':              'breathlessness',
+    'cannot breathe properly':            'breathlessness',
+    'struggling to breathe':              'breathlessness',
+    'trouble breathing':                  'breathlessness',
+    'hard time breathing':                'breathlessness',
+    'pain shooting down my arm':          'left_arm_pain',
+    'pain radiating down arm':            'left_arm_pain',
+    'pain radiating to arm':              'left_arm_pain',
+    'arm hurts':                          'left_arm_pain',
+    'pain in my arm':                     'left_arm_pain',
+    'pain in left arm':                   'left_arm_pain',
+    'left arm hurts':                     'left_arm_pain',
+    'left shoulder pain':                 'left_arm_pain',
+    'shoulder pain':                      'left_arm_pain',
+    'shoulder hurts':                     'left_arm_pain',
+    'pain in shoulder':                   'left_arm_pain',
+    'arm weak':                           'arm_weakness',
+    'arm feels weak':                     'arm_weakness',
+    'arm weakness':                       'arm_weakness',
+    'cant move my arm':                   'arm_weakness',
+    'cannot move arm':                    'arm_weakness',
+    'cant lift my arm':                   'arm_weakness',
+    'cannot lift arm':                    'arm_weakness',
+    'jaw hurts':                          'jaw_pain',
+    'jaw aches':                          'jaw_pain',
+    'teeth hurt':                         'jaw_pain',
+    'teeth ache':                         'jaw_pain',
+    'pain in my jaw':                     'jaw_pain',
+    'cold and sweaty':                    'cold_sweat',
+    'sweating and cold':                  'cold_sweat',
+    'sweating but cold':                  'cold_sweat',
+    'breaking out in cold sweat':         'cold_sweat',
+    'cold sweat':                         'cold_sweat',
+    'profuse sweating':                   'sweating',
+
+    # ── Extended Stroke / Neurological Aliases (v5) ───────────────────────────
+    'face is drooping':                   'facial_droop',
+    'my face is drooping':                'facial_droop',
+    'face drooping on one side':          'facial_droop',
+    'face droop':                         'facial_droop',
+    'droopy face':                        'facial_droop',
+    'uneven smile':                       'facial_droop',
+    'mouth drooping':                     'facial_droop',
+    'one side of body numb':              'weakness_of_one_body_side',
+    'one side numb':                      'weakness_of_one_body_side',
+    'half my body is numb':               'weakness_of_one_body_side',
+    'cant move one side':                 'weakness_of_one_body_side',
+    'one side of body weak':              'weakness_of_one_body_side',
+    'suddenly confused':                  'altered_sensorium',
+    'suddenly disoriented':               'altered_sensorium',
+    'sudden confusion':                   'altered_sensorium',
+    'cant think clearly':                 'lack_of_concentration',
+    'cannot think':                       'lack_of_concentration',
+    'words not making sense':             'slurred_speech',
+    'cant form words':                    'slurred_speech',
+    'speaking gibberish':                 'slurred_speech',
+    'tongue feels heavy':                 'slurred_speech',
+    'sudden balance loss':                'loss_of_balance',
+    'suddenly lost balance':              'loss_of_balance',
+    'fell suddenly':                      'loss_of_balance',
+    'sudden severe headache':             'headache',
+    'worst headache of my life':          'headache',
+    'thunderclap headache':               'headache',
+
+    # ── Extended General / Blood Pressure Aliases (v5) ───────────────────────
+    'high bp':                            'headache',
+    'bp high':                            'headache',
+    'low bp':                             'dizziness',
+    'bp low':                             'dizziness',
+    'feeling cold':                       'chills',
+    'feel cold':                          'chills',
+    'cold all over':                      'chills',
+    'really bad pain':                    'muscle_pain',
+    'excruciating pain':                  'muscle_pain',
+    'severe pain':                        'muscle_pain',
+    'unbearable pain':                    'muscle_pain',
+    'cant eat':                           'loss_of_appetite',
+    'no interest in food':                'loss_of_appetite',
+    'dont feel like eating':              'loss_of_appetite',
+    'stomach feels bloated':              'swelling_of_stomach',
+    'belly is bloated':                   'swelling_of_stomach',
+    'my stomach is swollen':              'swelling_of_stomach',
+    'urine is dark':                      'dark_urine',
+    'urine dark':                         'dark_urine',
+    'dark yellow urine':                  'dark_urine',
+    'skin is yellow':                     'yellowish_skin',
+    'skin looks yellow':                  'yellowish_skin',
+    'eyes are yellow':                    'yellowing_of_eyes',
+    'eyes look yellow':                   'yellowing_of_eyes',
+    'my skin itches':                     'itching',
+    'all over itching':                   'itching',
+    'whole body itching':                 'itching',
+    'back of my throat hurts':            'throat_irritation',
+    'throat very sore':                   'throat_irritation',
+    'cant swallow':                       'throat_irritation',
+    'hard to swallow':                    'throat_irritation',
+    'difficulty swallowing':              'throat_irritation',
+    'peeing blood':                       'spotting_urination',
+    'blood when i pee':                   'spotting_urination',
+    'blood in pee':                       'spotting_urination',
+    'coughing up blood':                  'blood_in_sputum',
+    'spitting blood':                     'blood_in_sputum',
+    'vomiting blood':                     'blood_in_sputum',
+    'blood when i cough':                 'blood_in_sputum',
 }
 
 
@@ -1211,8 +1359,10 @@ def apply_conservative_adjustments(
 
     This function enforces safety rails:
     1. Commonality Boost: Biases the model toward non-severe, common conditions (Allergy, Cold).
-    2. Severity Gate: Penalizes life-threatening conditions unless specific clinical markers 
+    2. Severity Gate: Penalizes life-threatening conditions unless specific clinical markers
        (hallmark symptoms) are present in the user's input.
+    3. Disease-Specific Boost: Uses stronger multipliers for conditions where the model
+       is most likely to underestimate probability (cardiac, stroke).
 
     Args:
         probabilities: Raw probability array from the model.
@@ -1236,16 +1386,19 @@ def apply_conservative_adjustments(
             matched_markers  = [m for m in required_markers if m in valid_features]
             n_matched        = len(matched_markers)
 
+            # Get the disease-specific boost (or default if not in table)
+            boost = DISEASE_SPECIFIC_BOOSTS.get(disease, DEFAULT_MARKER_BOOST)
+
             if n_matched == 0:
                 # No markers at all → drastically penalize (false positive suppression)
                 adjusted[i] *= SCARY_PENALTY_MULTIPLIER
             elif n_matched >= 2:
-                # Multiple hallmark markers present → strong boost to counteract
-                # the diluted model signal from noisy training data
-                adjusted[i] *= MARKER_PRESENT_BOOST
+                # Multiple hallmark markers → apply full disease-specific boost
+                # Cardiac conditions get 6x here to ensure they win after renormalization
+                adjusted[i] *= boost
             elif n_matched == 1:
-                # Single marker → moderate boost (could be relevant, stay cautious)
-                adjusted[i] *= (MARKER_PRESENT_BOOST * 0.5)
+                # Single marker → moderate boost (cautious but not penalized)
+                adjusted[i] *= (boost * 0.55)
 
     # Re-normalize so all probabilities still sum to 1.0
     total = np.sum(adjusted)
@@ -1253,6 +1406,7 @@ def apply_conservative_adjustments(
         adjusted = adjusted / total
 
     return adjusted
+
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1658,25 +1812,69 @@ def predict_with_ollama(
         diagnosis = OllamaDiagnosis.model_validate_json(content)
         confidence = max(0, min(100, diagnosis.confidence))
 
-        # Normalize specialist name (LLM sometimes outputs category labels)
+        # Normalize specialist name (LLM sometimes outputs category labels, lowercase, or
+        # hallucinated values not in the allowed set)
         SPECIALIST_NORMALIZE = {
-            "heart/cardiac": "Cardiologist",
-            "brain/neurological": "Neurologist",
-            "lung/breathing": "Pulmonologist",
-            "stomach/digestive": "Gastroenterologist",
-            "skin": "Dermatologist",
-            "joint/bone": "Rheumatologist",
-            "thyroid/hormone": "Endocrinologist",
-            "infections/fever": "Infectious Disease Specialist",
-            "ear/nose/throat": "ENT Specialist",
-            "urinary": "Urologist",
-            "liver": "Hepatologist",
-            "allergy": "Allergist",
-            "sleep": "Sleep Specialist",
-            "vascular": "Vascular Surgeon",
-            "general/unclear": "General Physician",
+            # Category labels the LLM was instructed to use (legacy)
+            "heart/cardiac":                "Cardiologist",
+            "brain/neurological":           "Neurologist",
+            "lung/breathing":               "Pulmonologist",
+            "stomach/digestive":            "Gastroenterologist",
+            "skin":                         "Dermatologist",
+            "joint/bone":                   "Rheumatologist",
+            "thyroid/hormone":              "Endocrinologist",
+            "infections/fever":             "Infectious Disease Specialist",
+            "ear/nose/throat":              "ENT Specialist",
+            "urinary":                      "Urologist",
+            "liver":                        "Hepatologist",
+            "allergy":                      "Allergist",
+            "sleep":                        "Sleep Specialist",
+            "vascular":                     "Vascular Surgeon",
+            "general/unclear":              "General Physician",
+            # Lowercase exact-name variants (LLM forgets capitalization)
+            "cardiologist":                 "Cardiologist",
+            "neurologist":                  "Neurologist",
+            "pulmonologist":                "Pulmonologist",
+            "gastroenterologist":           "Gastroenterologist",
+            "dermatologist":                "Dermatologist",
+            "rheumatologist":               "Rheumatologist",
+            "endocrinologist":              "Endocrinologist",
+            "infectious disease specialist": "Infectious Disease Specialist",
+            "ent specialist":               "ENT Specialist",
+            "urologist":                    "Urologist",
+            "hepatologist":                 "Hepatologist",
+            "allergist":                    "Allergist",
+            "sleep specialist":             "Sleep Specialist",
+            "vascular surgeon":             "Vascular Surgeon",
+            "general physician":            "General Physician",
+            # Common LLM hallucination variants
+            "general practitioner":         "General Physician",
+            "gp":                           "General Physician",
+            "physician":                    "General Physician",
+            "family doctor":                "General Physician",
+            "family physician":             "General Physician",
+            "internist":                    "General Physician",
+            "primary care physician":       "General Physician",
+            "emergency physician":          "Cardiologist",  # LLM says this for cardiac emergencies
+            "emergency physician / toxicology": "General Physician",
+            "emergency medicine":           "Cardiologist",
+            "emergency doctor":             "Cardiologist",
         }
-        specialist = SPECIALIST_NORMALIZE.get(diagnosis.specialist.lower(), diagnosis.specialist)
+        raw_specialist = diagnosis.specialist.strip()
+        specialist = SPECIALIST_NORMALIZE.get(raw_specialist.lower(), raw_specialist)
+
+        # Final guard: if LLM returned something completely unknown, fall back to GP
+        VALID_SPECIALISTS = {
+            "Cardiologist", "Neurologist", "Pulmonologist", "Gastroenterologist",
+            "Dermatologist", "Rheumatologist", "Endocrinologist",
+            "Infectious Disease Specialist", "ENT Specialist", "Urologist",
+            "Hepatologist", "Allergist", "Sleep Specialist", "Vascular Surgeon",
+            "General Physician", "Psychiatrist", "Ophthalmologist",
+            "Pediatrician", "Orthopedic",
+        }
+        if specialist not in VALID_SPECIALISTS:
+            print(f"⚠️  Ollama returned unknown specialist '{specialist}' → defaulting to General Physician")
+            specialist = "General Physician"
 
         # Build vitals analysis annotations
         vitals_analysis: List[str] = []
@@ -2123,10 +2321,13 @@ async def predict_symptoms(request: SymptomRequest):
     )
 
     # ── Fast-First Inference Strategy ─────────────────────────────────────────
-    # If the ML model is highly confident (>=85%) or has detected a critical emergency,
-    # return the result immediately to bypass the 10+ second LLM delay.
-    # We only invoke Ollama for complex, low-confidence, or ambiguous cases.
-    if urgency == "Emergency" or (final_confidence >= 85 and final_disease not in SCARY_DISEASES):
+    # Return the ML result immediately for:
+    #   1. Any Emergency-urgency result (emergency overrides always fire at ≥75% confidence)
+    #   2. Any result with ≥75% confidence (covers well-evidenced scary disease cases)
+    # Previously this condition excluded SCARY_DISEASES from the fast path, which was
+    # backwards — it forced cardiac/stroke cases (the most critical!) to always hit
+    # the slow 10s+ Ollama path, increasing latency and risking LLM hallucination.
+    if urgency == "Emergency" or final_confidence >= 75:
         print(f"⚡ Fast-First Strategy: Returning ML result (Confidence: {final_confidence}%, Urgency: {urgency})")
         return ml_response
 

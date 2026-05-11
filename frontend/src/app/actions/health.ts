@@ -64,14 +64,48 @@ export async function getFamilyMembers(userId?: string) {
     }
 }
 
-export async function analyzeSymptomsAndFindDoctors(symptoms: string) {
+export async function analyzeSymptomsAndFindDoctors(symptoms: string, providedSpecialist?: string, providedAnalysis?: string) {
     try {
-        const response = await api.post(`/doctors/analyze`, { symptoms }, { headers: getHeaders() });
+        const payload: any = { symptoms };
+        if (providedSpecialist) payload.providedSpecialist = providedSpecialist;
+        if (providedAnalysis) payload.providedAnalysis = providedAnalysis;
+        
+        const response = await api.post(`/doctors/analyze`, payload, { headers: getHeaders() });
         return response.data;
     } catch (error) {
         return { analysis: "Error analyzing symptoms", specialty: "General Physician", doctors: [] };
     }
 }
+
+/**
+ * Calls the Python AI engine DIRECTLY (bypassing the Node backend proxy) to get
+ * a specialist recommendation for a given symptom description.
+ * This is the correct approach since the doctor list lives in the frontend and
+ * the Node proxy has a MongoDB lookup that always returns 0 results.
+ *
+ * @param symptoms - Natural language symptom string
+ * @returns The specialist name (e.g. "Cardiologist") and the condition analysis text
+ */
+export async function predictSpecialty(symptoms: string): Promise<{ specialist: string; analysis: string; urgency: string }> {
+    try {
+        const response = await fetch('http://localhost:8000/predict_symptoms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symptoms }),
+        });
+        if (!response.ok) throw new Error(`AI engine error: ${response.status}`);
+        const data = await response.json();
+        return {
+            specialist: data.specialist || 'General Physician',
+            analysis: `${data.condition} — ${data.advice}`,
+            urgency: data.urgency || 'Normal',
+        };
+    } catch (error) {
+        console.error('Direct AI engine call failed:', error);
+        return { specialist: 'General Physician', analysis: 'Unable to analyze symptoms.', urgency: 'Normal' };
+    }
+}
+
 
 export async function updateVitalLog(logId: string, data: any) {
     try {
