@@ -1,7 +1,7 @@
 """
 # 🏥 Famplus AI Inference Engine (v4.0 — Advanced Health Support Prototype)
 # ------------------------------------------------------------------------------
-# Author: Sayak Mandal
+# Author: Famplus Developer
 # Version: 4.0 (Vitals-Aware + SciSpacy NER + Gemma3 Reasoning)
 #
 # This microservice acts as the 'Cerebellum' of the Famplus ecosystem. It exposes
@@ -109,7 +109,7 @@ else:
 # Ollama is unavailable.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
-OLLAMA_TIMEOUT = 60  # Maximum seconds to wait for LLM response
+OLLAMA_TIMEOUT = 18  # Maximum seconds to wait for LLM response
 OLLAMA_CHECK_INTERVAL = 60  # Seconds between availability checks
 
 _ollama_available: Optional[bool] = None
@@ -1652,6 +1652,7 @@ CRITICAL SAFETY RULES:
 3. Be conservative — when uncertain, recommend a General Physician.
 4. NEVER dismiss chest pain, breathing difficulties, or neurological symptoms.
 5. Consider the patient's vitals (if provided) when making your assessment.
+6. GENERATE CONCISE RESPONSES: Keep descriptions, advice, and next steps to 1 short sentence max to ensure fast API responses.
 
 EMERGENCY RED FLAGS (ALWAYS flag as "Emergency" urgency):
 - Heavy/crushing chest pain → Cardiac Emergency → Cardiologist
@@ -1794,7 +1795,8 @@ def predict_with_ollama(
                     "keep_alive": -1,
                     "options": {
                         "temperature": 0,
-                        "num_predict": 512,
+                        "num_ctx": 1024,
+                        "num_predict": 256,
                     },
                 },
             )

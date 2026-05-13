@@ -6,7 +6,7 @@
  * the Python AI Intelligence layer.
  * 
  * @module server.js
- * @author Sayak Mandal
+ * @author Famplus Developer
  */
 
 const express = require('express');
@@ -141,8 +141,8 @@ async function seedDemoUser() {
       await user.save();
       console.log('🌱 Demo Circle created');
     } else {
-      // Update the name if it's the old Mandal family
-      if (circle.name === 'The Mandal Family') {
+      // Update the name if it's an old placeholder family name
+      if (circle.name === 'The Doe Family') {
         circle.name = 'The Doe Family';
         await circle.save();
       }
@@ -153,6 +153,12 @@ async function seedDemoUser() {
       { name: 'Vikram', relation: 'Father', age: 52, heartRate: 78, bloodPressure: '135/85', steps: 4200, sleep: '6h', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Caleb&backgroundColor=transparent' },
       { name: 'Anita', relation: 'Mother', age: 48, heartRate: 74, bloodPressure: '125/80', steps: 5100, sleep: '7.5h', avatar: 'https://api.dicebear.com/7.x/notionists/svg?seed=Anya&backgroundColor=transparent' }
     ];
+
+    const existingMembers = await FamilyMember.countDocuments({ userId: user._id });
+    if (existingMembers > 0) {
+      console.log('🌱 Demo profiles already exist. Skipping seed to preserve existing vitals and history.');
+      return;
+    }
 
     // CRITICAL: Clean up ALL existing members for this user to avoid duplicates and ensure sync
     await FamilyMember.deleteMany({ userId: user._id });
@@ -450,12 +456,41 @@ app.post('/api/family', requireAuth, async (req, res) => {
 // Update family member details
 app.put('/api/family/:memberId', requireAuth, async (req, res) => {
   try {
-    const member = await FamilyMember.findOneAndUpdate(
-      { _id: req.params.memberId, familyCircleId: req.user.familyCircleId },
+    // 1. Fetch old member to compare health metrics
+    const oldMember = await FamilyMember.findOne({ _id: req.params.memberId, familyCircleId: req.user.familyCircleId });
+    if (!oldMember) return res.status(404).json({ error: 'Member not found or unauthorized' });
+
+    // 2. Perform the update
+    const member = await FamilyMember.findByIdAndUpdate(
+      req.params.memberId,
       { $set: req.body },
       { new: true }
     );
-    if (!member) return res.status(404).json({ error: 'Member not found or unauthorized' });
+
+    // 3. Track if the user explicitly logged/updated their vitals
+    const vitalsChanged = (
+      req.body.heartRate !== undefined && req.body.heartRate !== oldMember.heartRate ||
+      req.body.bloodPressure !== undefined && req.body.bloodPressure !== oldMember.bloodPressure ||
+      req.body.steps !== undefined && req.body.steps !== oldMember.steps ||
+      req.body.sleep !== undefined && req.body.sleep !== oldMember.sleep ||
+      req.body.water !== undefined && req.body.water !== oldMember.water ||
+      req.body.activeCalories !== undefined && req.body.activeCalories !== oldMember.activeCalories
+    );
+
+    if (vitalsChanged) {
+      // Find the most recent VitalLog to carry over required fields (weight, height)
+      const lastLog = await VitalLog.findOne({ familyMemberId: member._id }).sort({ recordedAt: -1 });
+      
+      await VitalLog.create({
+        familyMemberId: member._id,
+        weight: lastLog ? lastLog.weight : 70, // Default fallback
+        height: lastLog ? lastLog.height : 170,
+        heartRate: member.heartRate || (lastLog ? lastLog.heartRate : 70),
+        hydration: member.water ? member.water * 1000 : (lastLog ? lastLog.hydration : 2000),
+        recordedAt: new Date()
+      });
+      console.log(`📈 New VitalLog created for ${member.name} because vitals were updated.`);
+    }
 
     // SYNC: If this is the user themselves (Self), update the User document too
     if (member.relation === 'Self' && member.userId.toString() === req.userId) {

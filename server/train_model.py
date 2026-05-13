@@ -1,7 +1,7 @@
 """
 # 🎯 Famplus ML Model Training Pipeline (v4.0 — Advanced Implementation)
 # ------------------------------------------------------------------------------
-# Author: Sayak Mandal
+# Author: Famplus Developer
 # Version: 4.0 (Vitals-Aware Gradient Boosting)
 #
 # This script orchestrates the training of the Histogram-based Gradient Boosted 

@@ -154,6 +154,34 @@ export function SymptomChecker() {
         if (!result) return;
         
         const doc = new jsPDF();
+
+        // Helper to format text with proper grammatical rules (Sentence case and punctuation)
+        const formatFormalText = (text: string | undefined | null) => {
+            if (!text) return '';
+            let formatted = text.trim();
+            // Capitalize first letter of every sentence
+            formatted = formatted.replace(/(^\s*|[.!?]\s+)([a-z])/g, (match, separator, letter) => {
+                return separator + letter.toUpperCase();
+            });
+            // Ensure sentences end with a period if they don't already (skip short phrases)
+            if (!/[.!?]$/.test(formatted) && formatted.length > 10) {
+                formatted += '.';
+            }
+            return formatted;
+        };
+
+        // Helper to sanitize text for jsPDF's standard fonts to prevent PDF corruption
+        const sanitizeText = (text: string | undefined | null) => {
+            if (!text) return '';
+            return text
+                .replace(/[\u2018\u2019]/g, "'") // smart single quotes
+                .replace(/[\u201C\u201D]/g, '"') // smart double quotes
+                .replace(/[\u2013\u2014]/g, '-') // en and em dashes
+                .replace(/[\u2026]/g, '...') // ellipsis
+                .replace(/[^\x20-\x7E]/g, ''); // strip remaining non-ASCII chars (emojis, etc.)
+        };
+
+        const processText = (text: string | undefined | null) => sanitizeText(formatFormalText(text));
         
         // Brand Header
         doc.setFillColor(15, 23, 42); // slate-900 (Famplus brand dark)
@@ -186,8 +214,8 @@ export function SymptomChecker() {
         autoTable(doc, {
             startY: yPos,
             body: [
-                ['Patient Name', patientName],
-                ['Reported Symptoms', symptoms]
+                ['Patient Name', sanitizeText(patientName)],
+                ['Reported Symptoms', processText(symptoms)]
             ],
             theme: 'plain',
             styles: { fontSize: 10, cellPadding: 2 },
@@ -197,22 +225,22 @@ export function SymptomChecker() {
         // @ts-ignore
         yPos = doc.lastAutoTable.finalY + 15;
 
-        // Vitals
+        // Vitals - Only include if data exists and is fresh (< 3 hours)
         if (selectedMemberData && vitalsStatus === 'fresh') {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
-            doc.text("Recorded Vitals", 14, yPos);
+            doc.text("Patient Vitals", 14, yPos);
             yPos += 8;
 
             const vitalsBody = [];
             if (selectedMemberData.heartRate) vitalsBody.push(['Heart Rate', `${selectedMemberData.heartRate} bpm`]);
-            if (selectedMemberData.bloodPressure) vitalsBody.push(['Blood Pressure', `${selectedMemberData.bloodPressure} mmHg`]);
-            if (selectedMemberData.sleep) vitalsBody.push(['Sleep (Last Night)', `${selectedMemberData.sleep}`]);
+            if (selectedMemberData.bloodPressure) vitalsBody.push(['Blood Pressure', `${sanitizeText(selectedMemberData.bloodPressure)} mmHg`]);
+            if (selectedMemberData.sleep) vitalsBody.push(['Sleep (Last Night)', sanitizeText(selectedMemberData.sleep)]);
             
             // Add Timestamp for Reliability
             if (selectedMemberData.latestVitalAt) {
                 const recordedAt = new Date(selectedMemberData.latestVitalAt).toLocaleString();
-                vitalsBody.push(['Recorded At', recordedAt]);
+                vitalsBody.push(['Vitals Taken At', sanitizeText(recordedAt)]);
             }
 
             if (vitalsBody.length > 0) {
@@ -237,10 +265,10 @@ export function SymptomChecker() {
         autoTable(doc, {
             startY: yPos,
             body: [
-                ['Condition Match', result.condition],
+                ['Condition Match', processText(result.condition)],
                 ['Confidence', `${result.confidence}%`],
-                ['Urgency Level', result.urgency || 'Normal'],
-                ['Recommended Specialist', result.specialist || 'General Physician']
+                ['Urgency Level', processText(result.urgency || 'Normal')],
+                ['Recommended Specialist', processText(result.specialist || 'General Physician')]
             ],
             theme: 'grid',
             headStyles: { fillColor: [41, 128, 185] },
@@ -258,7 +286,7 @@ export function SymptomChecker() {
         
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        const splitAdvice = doc.splitTextToSize(result.advice, 180);
+        const splitAdvice = doc.splitTextToSize(processText(result.advice), 180);
         doc.text(splitAdvice, 14, yPos);
         yPos += splitAdvice.length * 5 + 10;
         
@@ -273,7 +301,7 @@ export function SymptomChecker() {
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
             listItems.forEach(item => {
-                const lines = doc.splitTextToSize(`• ${item}`, 180);
+                const lines = doc.splitTextToSize(`• ${sanitizeText(item)}`, 180);
                 doc.text(lines, 14, yPos);
                 yPos += lines.length * 5 + 2;
             });
@@ -288,7 +316,17 @@ export function SymptomChecker() {
         const splitWarning = doc.splitTextToSize(warningText, 180);
         doc.text(splitWarning, 14, pageHeight - 15);
         
-        doc.save(`Famplus_Health_Report_${patientName.replace(/\s+/g, '_')}.pdf`);
+        // Explicitly create a Blob to ensure reliable cross-browser and OS downloading
+        const safeName = patientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const pdfBlob = doc.output('blob');
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Famplus_Health_Report_${safeName}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     };
 
     return (
