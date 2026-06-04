@@ -78,30 +78,24 @@ export async function analyzeSymptomsAndFindDoctors(symptoms: string, providedSp
 }
 
 /**
- * Calls the Python AI engine DIRECTLY (bypassing the Node backend proxy) to get
- * a specialist recommendation for a given symptom description.
- * This is the correct approach since the doctor list lives in the frontend and
- * the Node proxy has a MongoDB lookup that always returns 0 results.
+ * Calls the Node.js backend to get a specialist recommendation for a given
+ * symptom description. The backend proxies to the Python AI engine and handles
+ * failures gracefully.
  *
  * @param symptoms - Natural language symptom string
  * @returns The specialist name (e.g. "Cardiologist") and the condition analysis text
  */
 export async function predictSpecialty(symptoms: string): Promise<{ specialist: string; analysis: string; urgency: string }> {
     try {
-        const response = await fetch('http://localhost:8000/predict_symptoms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ symptoms }),
-        });
-        if (!response.ok) throw new Error(`AI engine error: ${response.status}`);
-        const data = await response.json();
+        const response = await api.post('/doctors/analyze', { symptoms }, { headers: getHeaders() });
+        const data = response.data;
         return {
-            specialist: data.specialist || 'General Physician',
-            analysis: `${data.condition} — ${data.advice}`,
+            specialist: data.specialty || 'General Physician',
+            analysis: data.analysis || 'Unable to analyze symptoms.',
             urgency: data.urgency || 'Normal',
         };
-    } catch (error) {
-        console.error('Direct AI engine call failed:', error);
+    } catch (error: any) {
+        console.error('predictSpecialty error:', error?.response?.data || error);
         return { specialist: 'General Physician', analysis: 'Unable to analyze symptoms.', urgency: 'Normal' };
     }
 }
@@ -127,10 +121,11 @@ export async function deleteVitalLog(logId: string) {
 
 export async function updateFamilyMember(memberId: string, data: any) {
     try {
-        await api.put(`/family/${memberId}`, data, { headers: getHeaders() });
-        return { success: true };
-    } catch (error) {
-        return { success: false, error: "Failed to update family member" };
+        const response = await api.put(`/family/${memberId}`, data, { headers: getHeaders() });
+        return { success: true, data: response.data };
+    } catch (error: any) {
+        console.error('updateFamilyMember error:', error?.response?.data || error);
+        return { success: false, error: error?.response?.data?.error || "Failed to update family member" };
     }
 }
 

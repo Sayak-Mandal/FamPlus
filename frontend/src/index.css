@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:is(.dark *));
+
 @layer base {
   :root {
     /* Modern Earth Tones / Bento Style (Light) */
@@ -211,4 +213,26 @@
     background-color: hsl(var(--pastel-purple-dark));
     color: hsl(260 70% 90%);
   }
+}
+
+@keyframes wave-bounce {
+  0%, 100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1.1);
+  }
+}
+
+.animate-wave-1 {
+  animation: wave-bounce 0.8s ease-in-out infinite;
+}
+.animate-wave-2 {
+  animation: wave-bounce 0.8s ease-in-out infinite 0.15s;
+}
+.animate-wave-3 {
+  animation: wave-bounce 0.8s ease-in-out infinite 0.3s;
+}
+.animate-wave-4 {
+  animation: wave-bounce 0.8s ease-in-out infinite 0.45s;
 }

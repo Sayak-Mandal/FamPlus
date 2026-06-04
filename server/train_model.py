@@ -231,7 +231,7 @@ def train_model():
     # 5-fold stratified CV ensures each fold has the same class distribution
     print("\n📊 Running 5-fold cross-validation (this may take a moment)...")
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=-1)
+    cv_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=1)
     print(f"   CV Accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
     print(f"   Per-fold   : {[f'{s:.3f}' for s in cv_scores]}")
 

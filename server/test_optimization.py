@@ -2,7 +2,7 @@ import httpx
 import time
 import json
 
-URL = "http://localhost:8000/predict_symptoms"
+URL = "http://127.0.0.1:8000/predict_symptoms"
 
 SCENARIOS = [
     {

@@ -6,15 +6,15 @@
  */
 
 import React, { useState } from 'react'
-import { predictCondition, VitalsContext } from '@/services/ai-model'
+import { getFamilyMembers, analyzeAndLogSymptom } from '@/app/actions/health'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download } from 'lucide-react'
-import { getFamilyMembers, logSymptom } from '@/app/actions/health'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff } from 'lucide-react'
 import { Link } from "react-router-dom";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useSpeechRecognition } from '@/hooks/use-speech-recognition'
 
 /**
  * 🏥 SymptomChecker Component
@@ -38,6 +38,7 @@ const VITALS_FRESHNESS_LIMIT = 180; // 3 hours
 
 export function SymptomChecker() {
     const [symptoms, setSymptoms] = useState("")
+    const { isListening, toggleListening, stopListening, isSupported } = useSpeechRecognition()
     const [result, setResult] = useState<{ 
         condition: string; 
         confidence: number; 
@@ -91,54 +92,33 @@ export function SymptomChecker() {
         setVitalsStatus(ageMinutes <= VITALS_FRESHNESS_LIMIT ? 'fresh' : 'stale')
     }, [selectedMember, selectedMemberData])
 
-    /**
-     * Build a VitalsContext from the selected member's dashboard data.
-     * Returns undefined if no member is selected or vitals are stale.
-     */
-    const buildVitalsContext = (): VitalsContext | undefined => {
-        if (!selectedMemberData) return undefined
-
-        // Use latestVitalAt — the actual recordedAt of the most recent VitalLog.
-        // Vitals older than 3 hours (VITALS_FRESHNESS_LIMIT = 180 min) are rejected
-        // by both the UI badge AND the Python AI engine backend.
-        const latestVitalAt = selectedMemberData.latestVitalAt
-        if (!latestVitalAt) return undefined
-
-        const ageMinutes = Math.floor((Date.now() - new Date(latestVitalAt).getTime()) / 60000)
-
-        // Always send the context — the backend will decide if it's fresh enough.
-        // This way the backend can still return a "data too old" message in vitals_analysis.
-        return {
-            heart_rate:       selectedMemberData.heartRate || undefined,
-            blood_pressure:   selectedMemberData.bloodPressure || undefined,
-            sleep:            selectedMemberData.sleep || undefined,
-            age:              selectedMemberData.age || undefined,
-            data_age_minutes: ageMinutes,
-        }
-    }
 
     /**
-     * Triggers the AI analysis pipeline.
-     * Fetches vitals context, calls the inference engine, and logs the encounter.
+     * Triggers the AI analysis pipeline via the Node.js backend proxy.
+     * The backend fetches the member's vitals context automatically and
+     * logs the encounter to MongoDB — no direct Python AI calls needed.
      */
     const handleAnalyze = async () => {
         if (!symptoms.trim()) return;
+        if (!selectedMember) {
+            alert('Please select a family member first.');
+            return;
+        }
         setLoading(true);
         try {
-            const vitalsContext = buildVitalsContext();
-            const prediction = await predictCondition(symptoms, vitalsContext);
-            setResult(prediction);
-
-            // Log to Database if member selected
-            if (selectedMember && prediction.condition !== "Service Unavailable" && prediction.condition !== "Unspecific Indications") {
-                await logSymptom(
-                    selectedMember,
-                    symptoms,
-                    `${prediction.condition}: ${prediction.description || prediction.advice}`,
-                    prediction.urgency === 'High' ? 'Emergency' : 'Safe'
-                );
+            const response = await analyzeAndLogSymptom(selectedMember, symptoms);
+            if (response.success && response.data) {
+                setResult(response.data);
+            } else {
+                console.error('AI analysis failed:', response.error);
+                setResult({
+                    condition: 'Service Unavailable',
+                    confidence: 0,
+                    advice: 'Unable to connect to the AI engine. Please ensure all services are running.',
+                    specialist: 'General Physician',
+                    urgency: 'Normal',
+                });
             }
-
         } catch (error) {
             console.error(error);
         } finally {
@@ -350,7 +330,7 @@ export function SymptomChecker() {
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6 pt-2 z-10 relative">
-                <div className="flex flex-col md:flex-row gap-6 md:gap-4">
+                <div className="flex flex-col md:flex-row items-start gap-6 md:gap-4 w-full">
                     <div className="md:w-1/3">
                         <select
                             className="h-14 w-full px-4 rounded-2xl bg-muted/30 border-input focus:ring-primary border text-lg font-medium transition-all hover:bg-muted/50"
@@ -402,14 +382,62 @@ export function SymptomChecker() {
                             </div>
                         )}
                     </div>
-                    <div className="relative flex-1">
-                        <Input
-                            className="h-14 text-lg px-6 rounded-2xl bg-muted/30 border-input focus-visible:ring-primary w-full transition-all hover:bg-muted/50"
-                            placeholder="Describe symptoms (e.g., headache, fever...)"
-                            value={symptoms}
-                            onChange={(e) => setSymptoms(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
-                        />
+                    <div className="flex-1 w-full">
+                        <div className="relative w-full h-14">
+                            <Input
+                                className="h-14 text-lg pl-6 pr-14 rounded-2xl bg-muted/30 border-input focus-visible:ring-primary w-full transition-all hover:bg-muted/50"
+                                placeholder="Describe symptoms (e.g., headache, fever...)"
+                                value={symptoms}
+                                onChange={(e) => setSymptoms(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleAnalyze()}
+                            />
+                            {/* WhatsApp-style Speech Recognition Overlay */}
+                            {isListening && (
+                                <div className="absolute inset-0.5 bg-background/95 backdrop-blur-md rounded-2xl flex items-center justify-between px-6 animate-in fade-in slide-in-from-left-2 duration-300 z-10 border border-red-500/20">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex items-center justify-center w-5 h-5 relative">
+                                            <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                                        </div>
+                                        <span className="text-red-600 dark:text-red-400 text-sm font-semibold tracking-wide animate-pulse">
+                                            Listening...
+                                        </span>
+                                        
+                                        {/* Bouncing Audio Wave Visual */}
+                                        <div className="flex items-end gap-1 h-5 px-2">
+                                            <div className="w-1 h-3 bg-red-500 rounded-full origin-bottom animate-wave-1" />
+                                            <div className="w-1 h-5 bg-red-500 rounded-full origin-bottom animate-wave-2" />
+                                            <div className="w-1 h-4 bg-red-500 rounded-full origin-bottom animate-wave-3" />
+                                            <div className="w-1 h-2 bg-red-500 rounded-full origin-bottom animate-wave-4" />
+                                        </div>
+                                    </div>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={stopListening}
+                                        className="text-muted-foreground hover:text-foreground text-xs font-bold transition-all px-3 py-1.5 hover:bg-muted rounded-xl mr-8"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            )}
+
+                            {isSupported && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggleListening((text) => setSymptoms(prev => prev ? `${prev.trim()} ${text}` : text))}
+                                    className={`absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-xl transition-all duration-300 z-20 ${
+                                        isListening 
+                                            ? 'bg-red-500/10 text-red-500 animate-pulse border border-red-500/30' 
+                                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                                    }`}
+                                    title={isListening ? "Stop listening" : "Add symptoms using voice"}
+                                    aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                                >
+                                    {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <Button
                         onClick={handleAnalyze}

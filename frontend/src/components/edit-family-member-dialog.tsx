@@ -11,13 +11,15 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Pencil, Loader2 } from "lucide-react"
+import { Pencil, Loader2, CheckCircle2 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { updateFamilyMember } from "@/app/actions/health"
+import { useFamilyContext } from "@/app/family-context"
 
 interface EditFamilyMemberDialogProps {
     member: {
-        id: string
+        id?: string
+        _id?: string
         name: string
         age: number
         relation: string
@@ -40,8 +42,10 @@ const AVATAR_SEEDS = [
 ];
 
 export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDialogProps) {
+    const { refresh } = useFamilyContext()
     const [open, setOpen] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [saved, setSaved] = useState(false)
     const [isEditingAvatar, setIsEditingAvatar] = useState(false)
     const [formData, setFormData] = useState({
         name: member.name,
@@ -80,6 +84,13 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
         e.preventDefault()
         setLoading(true)
 
+        const memberId = member._id || member.id || ''
+        if (!memberId) {
+            console.error('EditFamilyMemberDialog: member has no id or _id — cannot save.')
+            setLoading(false)
+            return
+        }
+
         const updatedData = {
             name: formData.name,
             age: parseInt(formData.age) || 0,
@@ -94,14 +105,25 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
             activeCalories: parseInt(formData.activeCalories) || 0,
         }
 
-        await updateFamilyMember(member.id, updatedData)
-
-        if (onUpdate) {
-            onUpdate({ ...member, ...updatedData })
-        }
+        const result = await updateFamilyMember(memberId, updatedData)
 
         setLoading(false)
-        setOpen(false)
+
+        if (result.success) {
+            // Notify the local parent component immediately for snappy UI
+            if (onUpdate) {
+                onUpdate({ ...member, ...updatedData })
+            }
+            // Refresh global context so sidebar, dropdowns & other pages are in sync
+            await refresh()
+            setSaved(true)
+            setTimeout(() => {
+                setSaved(false)
+                setOpen(false)
+            }, 800)
+        } else {
+            console.error('Failed to save member:', result.error)
+        }
     }
 
     return (
@@ -282,9 +304,13 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                         </div>
 
                         <DialogFooter>
-                            <Button type="submit" disabled={loading} size="sm">
-                                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Save Changes
+                            <Button type="submit" disabled={loading || saved} size="sm">
+                                {loading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : saved ? (
+                                    <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
+                                ) : null}
+                                {saved ? 'Saved!' : 'Save Changes'}
                             </Button>
                         </DialogFooter>
                     </form>

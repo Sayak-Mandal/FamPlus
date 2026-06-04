@@ -1,11 +1,12 @@
 
 import { Card, CardContent } from "@/components/ui/card"
 import { MapMarker } from "@/components/map-component"
-import { MapPin, Search, Stethoscope, Loader2, Phone, Copy, AlertTriangle } from "lucide-react"
+import { MapPin, Search, Stethoscope, Loader2, Phone, Copy, AlertTriangle, Mic, MicOff } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useState, useEffect, useCallback } from "react"
 import { useSearchParams, useLocation } from "react-router-dom"
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition"
 
 import { predictSpecialty } from "@/app/actions/health"
 import { Doctor, doctors as ALL_DOCTORS } from "@/lib/data/doctors"
@@ -84,6 +85,7 @@ function FindCareContent() {
     const [searchParams] = useSearchParams()
     const location = useLocation()
     const initialSymptoms = searchParams.get("symptoms") || ""
+    const { isListening, toggleListening, stopListening, isSupported } = useSpeechRecognition()
 
     // aiResult is passed from SymptomChecker via router state — it already has the
     // correct specialist so we should use it directly, not re-call the AI.
@@ -264,11 +266,57 @@ function FindCareContent() {
                         <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Describe symptoms (e.g., headache)..."
-                            className="pl-9 bg-background"
+                            className="pl-9 pr-12 bg-background"
                             value={symptoms}
                             onChange={(e) => setSymptoms(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                         />
+                        {/* WhatsApp-style Speech Recognition Overlay */}
+                        {isListening && (
+                            <div className="absolute inset-0.5 bg-background/95 backdrop-blur-md rounded-xl flex items-center justify-between px-4 animate-in fade-in slide-in-from-left-2 duration-300 z-10 border border-red-500/20">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex items-center justify-center w-4 h-4 relative">
+                                        <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+                                    </div>
+                                    <span className="text-red-600 dark:text-red-400 text-xs font-semibold tracking-wide animate-pulse">
+                                        Listening...
+                                    </span>
+                                    
+                                    {/* Bouncing Audio Wave Visual */}
+                                    <div className="flex items-end gap-0.5 h-4 px-1">
+                                        <div className="w-0.75 h-2 bg-red-500 rounded-full origin-bottom animate-wave-1" />
+                                        <div className="w-0.75 h-3.5 bg-red-500 rounded-full origin-bottom animate-wave-2" />
+                                        <div className="w-0.75 h-3 bg-red-500 rounded-full origin-bottom animate-wave-3" />
+                                        <div className="w-0.75 h-1.5 bg-red-500 rounded-full origin-bottom animate-wave-4" />
+                                    </div>
+                                </div>
+                                
+                                <button
+                                    type="button"
+                                    onClick={stopListening}
+                                    className="text-muted-foreground hover:text-foreground text-xs font-bold transition-all px-2.5 py-1 hover:bg-muted rounded-lg mr-8"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        )}
+
+                        {isSupported && (
+                            <button
+                                type="button"
+                                onClick={() => toggleListening((text) => setSymptoms(prev => prev ? `${prev.trim()} ${text}` : text))}
+                                className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all duration-300 z-20 ${
+                                    isListening 
+                                        ? 'bg-red-500/10 text-red-500 animate-pulse border border-red-500/30' 
+                                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                                }`}
+                                title={isListening ? "Stop listening" : "Add symptoms using voice"}
+                                aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                            >
+                                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                            </button>
+                        )}
                     </div>
 
                     <Select value={selectedCategory} onValueChange={handleCategoryChange}>

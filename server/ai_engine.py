@@ -66,18 +66,26 @@ except OSError:
 app = FastAPI(title="Famplus AI Engine", version="4.0")
 
 # ── CORS ───────────────────────────────────────────────────────────────────────
-# Internal communication only. Restrict in production.
+# Fix: wildcard allow_origins cannot be combined with allow_credentials=True per
+# the CORS spec — browsers will block the preflight. Use explicit origins instead.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5001",
+        "http://127.0.0.1:5001",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ── Model Loading ──────────────────────────────────────────────────────────────
-MODEL_PATH    = 'model.joblib'
-METADATA_PATH = 'metadata.joblib'
+# Use __file__-relative paths so the model loads correctly regardless of CWD
+_BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH    = os.path.join(_BASE_DIR, 'model.joblib')
+METADATA_PATH = os.path.join(_BASE_DIR, 'metadata.joblib')
 
 model           = None
 metadata        = None
@@ -173,7 +181,7 @@ EMERGENCY_OVERRIDES: Dict[str, dict] = {
     'Paralysis (brain hemorrhage)': {
         'definitive_markers': [
             'weakness_of_one_body_side', 'slurred_speech',
-            'altered_sensorium',
+            'altered_sensorium', 'facial_droop', 'arm_weakness',
         ],
         'supporting_markers': [
             'loss_of_balance', 'headache', 'vomiting',
@@ -686,9 +694,12 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'facial droop':           'facial_droop',
     'face droops':            'facial_droop',
     'drooping face':          'facial_droop',
+    'drooping mouth':         'facial_droop',
+    'facial drooping':        'facial_droop',
     'face numb':              'facial_droop',
     'one side weak':          'weakness_of_one_body_side',
     'one side weakness':      'weakness_of_one_body_side',
+    'one-sided weakness':     'weakness_of_one_body_side',
     'sudden weakness':        'weakness_of_one_body_side',
     'body side weak':         'weakness_of_one_body_side',
     'sudden confusion':       'altered_sensorium',
@@ -726,10 +737,16 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     # ── Urinary ──────────────────────────────────────────────────────────
     'frequent urination':     'continuous_feel_of_urine',
     'urinating frequently':   'continuous_feel_of_urine',
+    'frequent bathroom trips': 'continuous_feel_of_urine',
+    'frequent trips to the bathroom': 'continuous_feel_of_urine',
     'cloudy urine':           'dark_urine',
     'pelvic pain':            'abdominal_pain',
     'painful urination':      'burning_micturition',
     'burning when peeing':    'burning_micturition',
+    'burning sensation when urinating': 'burning_micturition',
+    'burning urination':      'burning_micturition',
+    'burning sensation during urination': 'burning_micturition',
+    'burning when urinating': 'burning_micturition',
     # ── Diabetes ─────────────────────────────────────────────────────────
     'excessive thirst':       'dehydration',
     'polydipsia':             'dehydration',
@@ -1796,7 +1813,7 @@ def predict_with_ollama(
                     "options": {
                         "temperature": 0,
                         "num_ctx": 1024,
-                        "num_predict": 256,
+                        "num_predict": 512,
                     },
                 },
             )

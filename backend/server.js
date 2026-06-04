@@ -592,14 +592,44 @@ app.post('/api/family/:memberId/analyze-symptoms', requireAuth, async (req, res)
   try {
     const { symptoms } = req.body;
     if (!symptoms) return res.status(400).json({ error: 'Symptoms are required' });
-    // Orchestration: Call Python AI engine for inference
-    const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms });
-    const { condition, confidence, advice, specialist } = aiRes.data;
+    
+    // Retrieve family member details and construct vitals context
+    const member = await FamilyMember.findById(req.params.memberId);
+    let vitals_context = undefined;
+    if (member) {
+      const ageMinutes = member.latestVitalAt ? Math.floor((Date.now() - new Date(member.latestVitalAt).getTime()) / 60000) : undefined;
+      vitals_context = {
+        heart_rate: member.heartRate || undefined,
+        blood_pressure: member.bloodPressure || undefined,
+        sleep: member.sleep || undefined,
+        age: member.age || undefined,
+        data_age_minutes: ageMinutes
+      };
+    }
+
+    // Orchestration: Call Python AI engine for inference with vitals context
+    const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { 
+      symptoms,
+      vitals_context
+    });
+    const {
+      condition,
+      confidence,
+      advice,
+      specialist,
+      description,
+      precautions,
+      urgency,
+      top_matches,
+      next_steps,
+      vitals_analysis,
+      disclaimer
+    } = aiRes.data;
 
     // Severity mapping for UI highlighting
     let severity = 'Safe';
-    if (condition === 'Emergency') severity = 'Emergency';
-    else if (confidence >= 70) severity = 'Consult Doctor';
+    if (condition === 'Emergency' || urgency === 'Emergency') severity = 'Emergency';
+    else if (confidence >= 70 || urgency === 'High') severity = 'Consult Doctor';
 
     const log = await SymptomLog.create({
       familyMemberId: req.params.memberId,
@@ -608,7 +638,20 @@ app.post('/api/family/:memberId/analyze-symptoms', requireAuth, async (req, res)
       severity,
     });
 
-    res.json({ ...log.toObject(), condition, confidence, advice, specialist });
+    res.json({
+      ...log.toObject(),
+      condition,
+      confidence,
+      advice,
+      specialist,
+      description,
+      precautions,
+      urgency,
+      top_matches,
+      next_steps,
+      vitals_analysis,
+      disclaimer
+    });
   } catch (err) {
     console.error('Symptom analysis error:', err.message);
     res.status(500).json({ error: 'Failed to analyze symptoms. Is the AI engine running?' });
@@ -830,8 +873,8 @@ app.post('/api/circle/invite', requireAuth, async (req, res) => {
 
     // Check if user is already in a circle or has a pending invite?
     // Keep it simple: send the invite
-    await User.findByIdAndUpdate(invitee._id, {
-      $push: { pendingInvites: { circleId: req.user.familyCircleId, invitedBy: req.userId } }
+    await FamilyCircle.findByIdAndUpdate(req.user.familyCircleId, {
+      $addToSet: { pendingInvites: email.toLowerCase() }
     });
 
     res.json({ success: true, message: `Invite sent to ${email}` });
@@ -872,13 +915,9 @@ app.post('/api/circle/accept', requireAuth, async (req, res) => {
     if (!newCircle || !newCircle.pendingInvites.includes(user.email.toLowerCase())) {
       return res.status(400).json({ error: 'Invalid or expired invitation' });
     }
-    if (user.familyCircleId) {
-      await FamilyCircle.findByIdAndUpdate(user.familyCircleId, { $pull: { members: userId } });
-    }
-
     // 2. Join new circle
     user.familyCircleId = circleId;
-    newCircle.members.push(userId);
+    newCircle.members.push(req.userId);
     newCircle.pendingInvites = newCircle.pendingInvites.filter(e => e !== user.email.toLowerCase());
 
     await user.save();
@@ -886,7 +925,7 @@ app.post('/api/circle/accept', requireAuth, async (req, res) => {
 
     // 3. MERGE DATA (Safety Net): Move my family members to the new circle
     const result = await FamilyMember.updateMany(
-      { userId: userId },
+      { userId: req.userId },
       { familyCircleId: circleId }
     );
 
