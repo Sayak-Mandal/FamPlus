@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const RecordSchema = new mongoose.Schema({
   userId: {
@@ -13,7 +14,9 @@ const RecordSchema = new mongoose.Schema({
   },
   title: {
     type: String,
-    required: true
+    required: true,
+    get: decrypt,
+    set: encrypt
   },
   category: {
     type: String,
@@ -39,6 +42,10 @@ const RecordSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toJSON: { getters: true },
+  toObject: { getters: true }
+});
 
 module.exports = mongoose.model('Record', RecordSchema);

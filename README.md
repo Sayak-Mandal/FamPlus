@@ -7,23 +7,27 @@ Famplus is a premium, high-performance health platform engineered for proactive 
 
 ---
 
-## 🚀 Vision: Advanced Health Support Prototype
+## 🚀 Vision & Key Features
 
 Famplus is a research-oriented health monitoring prototype designed to bridge the gap between tracking and triage. Our latest version introduces **Guardian Technology**—a 3D-enhanced visualization layer that helps monitor family health trends with greater clarity.
 
 ### 🧠 Advanced AI Ecosystem
 *   **SciSpacy NLP Pipeline**: Utilizes an automated biomedical entity extraction pipeline to better understand medical terminology and conversational symptom descriptions.
-*   **Vitals-Aware Inference**: The Gradient Boosting model correlates symptoms with real-time Age, Heart Rate, and Blood Pressure for improved diagnostic simulations.
-*   **Technical Deep-Dive**: Explore our inference strategy and safety guardrails in [ai_architecture.md](server/ai_architecture.md).
+*   **Vitals-Contextual Diagnostics**: The Gradient Boosting model correlates symptoms with real-time Age, Heart Rate, and Blood Pressure for improved diagnostic simulations.
 *   **Local Gemma3 LLM Integration**: Leverages local Large Language Model capabilities for contextual health advice and clinical reasoning simulations.
-*   **Vitals-Contextual Diagnostics**: Inference is uniquely aware of the patient's individual vitals (Age, Heart Rate, BP), biasing diagnostic probabilities based on real-time evidence.
-*   **Professional PDF Reporting**: Branded, clinical-ready PDF diagnostic reports generated directly from the dashboard for sharing with healthcare providers.
+*   **Professional PDF Reporting**: Generate, preview directly in the application, and download clinical-ready PDF diagnostic reports.
 
-### 🎨 Premium Design & UX
+### 🎨 Premium Design & Glassmorphism UX
+*   **Glassmorphic Indicators**: An interactive Wellness Score panel utilizing CSS backdrop-filter glassmorphism, dynamic green/yellow/red risk alerts, and slow-pulsing background glow blobs.
+*   **Live Vitals Responsiveness**: Calculates user health index dynamically using live heart rate inputs with safety warnings (e.g. bradycardia detection).
 *   **3D Guardian Landing Page**: An immersive Three.js-powered experience showcasing the "Guardian" preventative features.
 *   **Custom Physics Engine**: A lightweight 2D collision physics engine powers micro-interactions and animated CSS icons for a tactile, high-end feel.
-*   **Medical-Themed Auth UI**: A completely overhauled, branded authentication flow with smooth transitions and refined typography.
-*   **Responsive Analytics**: Interactive Recharts dashboards that visualize health data across all devices.
+
+### 📁 Medical Vault & Secure Records
+*   **In-App Document Vault**: Allows uploading files (prescriptions, medical records) with secure, authenticated API access.
+*   **Document Previews**: Preview PDFs and images directly inside the application workspace without needing local downloads.
+*   **Encrypted Personal Vitals**: Secures sensitive user telemetry at-rest via an AES-256-CBC cipher with dynamic initialization vectors.
+*   **Vitals Logs Editing**: Modify mistakenly inputted vitals (weight, height, activity metrics) with automatic `EDITED` badge labels on updated entries.
 
 ---
 
@@ -32,7 +36,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 | Layer | Core Technologies |
 | :--- | :--- |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, Three.js, Framer Motion, jspdf |
-| **Backend** | Node.js, Express, MongoDB (Mongoose), JWT Security |
+| **Backend** | Node.js, Express, MongoDB (Mongoose), JWT Security, crypto (AES-256-CBC) |
 | **AI Engine** | Python 3.11, FastAPI, SciSpacy (en_core_sci_sm), Scikit-learn, Gemma3 |
 | **Mapping** | Google Maps Platform (Address-based routing), Leaflet |
 
@@ -52,7 +56,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 ```bash
 cd backend
 npm install
-# Configure .env with MONGO_URI, JWT_SECRET, and GOOGLE_MAPS_API_KEY
+# Configure .env with MONGO_URI, JWT_SECRET, ENCRYPTION_KEY, and GOOGLE_MAPS_API_KEY
 npm start
 ```
 
@@ -81,6 +85,3 @@ npm run dev
 ## 📖 System Architecture
 
 For a detailed breakdown of the file system and internal logic, please refer to the **[System Structure Guide](./structure.md)**.
-
----
-

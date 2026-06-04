@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 /**
  * SymptomLog Schema
@@ -8,11 +9,15 @@ const mongoose = require('mongoose');
 const SymptomLogSchema = new mongoose.Schema({
   symptoms: {
     type: String, // Raw Natural Language string or processed comma-separated list
-    required: true
+    required: true,
+    get: decrypt,
+    set: encrypt
   },
   analysis: {
     type: String, // Full text result returned from the FastAPI ai_engine
-    required: true
+    required: true,
+    get: decrypt,
+    set: encrypt
   },
   severity: {
     type: String, 
@@ -26,7 +31,9 @@ const SymptomLogSchema = new mongoose.Schema({
     index: true // Indexed for fast history retrieval per family member
   }
 }, { 
-  timestamps: true // Track when the symptom was logged
+  timestamps: true, // Track when the symptom was logged
+  toJSON: { getters: true },
+  toObject: { getters: true }
 });
 
 module.exports = mongoose.model('SymptomLog', SymptomLogSchema);

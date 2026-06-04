@@ -59,6 +59,8 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
         workouts: member.workouts?.toString() || "",
         water: member.water?.toString() || "",
         activeCalories: member.activeCalories?.toString() || "",
+        weight: (member as any).weight?.toString() || "",
+        height: (member as any).height?.toString() || "",
     })
 
     useEffect(() => {
@@ -76,6 +78,8 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                 workouts: member.workouts?.toString() || "",
                 water: member.water?.toString() || "",
                 activeCalories: member.activeCalories?.toString() || "",
+                weight: (member as any).weight?.toString() || "",
+                height: (member as any).height?.toString() || "",
             })
         }
     }, [open, member])
@@ -103,6 +107,8 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
             workouts: parseInt(formData.workouts) || 0,
             water: parseFloat(formData.water) || 0,
             activeCalories: parseInt(formData.activeCalories) || 0,
+            weight: parseFloat(formData.weight) || 0,
+            height: parseFloat(formData.height) || 0,
         }
 
         const result = await updateFamilyMember(memberId, updatedData)
@@ -226,6 +232,36 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                         <div className="border-t pt-4 mt-2">
                             <p className="text-sm font-medium mb-3 text-muted-foreground">Current Vitals</p>
                             <div className="grid grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label htmlFor="weight" className="text-xs">Weight</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            id="weight"
+                                            type="number"
+                                            step="0.1"
+                                            value={formData.weight}
+                                            onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                                            placeholder="70"
+                                            className="h-8"
+                                        />
+                                        <span className="text-xs text-muted-foreground">kg</span>
+                                    </div>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="height" className="text-xs">Height</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            id="height"
+                                            type="number"
+                                            step="0.1"
+                                            value={formData.height}
+                                            onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                                            placeholder="170"
+                                            className="h-8"
+                                        />
+                                        <span className="text-xs text-muted-foreground">cm</span>
+                                    </div>
+                                </div>
                                 <div className="grid gap-2">
                                     <Label htmlFor="heartRate" className="text-xs">Heart Rate</Label>
                                     <div className="flex items-center gap-2">

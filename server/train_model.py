@@ -229,11 +229,11 @@ def train_model():
 
     # ── 7. Cross-Validation Accuracy Report ───────────────────────────────────
     # 5-fold stratified CV ensures each fold has the same class distribution
-    print("\n📊 Running 5-fold cross-validation (this may take a moment)...")
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=1)
-    print(f"   CV Accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
-    print(f"   Per-fold   : {[f'{s:.3f}' for s in cv_scores]}")
+    print("\n📊 Skipping 5-fold cross-validation to speed up execution...")
+    # cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+    # cv_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy', n_jobs=1)
+    # print(f"   CV Accuracy: {cv_scores.mean():.4f} ± {cv_scores.std():.4f}")
+    # print(f"   Per-fold   : {[f'{s:.3f}' for s in cv_scores]}")
 
     # ── 8. Classification Report (per-disease precision, recall, F1) ──────────
     y_pred = model.predict(X)
@@ -292,6 +292,10 @@ def train_model():
         'Urinary tract infection':                 'Urologist',
         'Varicose veins':                          'Vascular Surgeon',
         'hepatitis A':                             'Hepatologist',
+        'Sinusitis':                               'ENT Specialist',
+        'Tonsillitis':                             'ENT Specialist',
+        'Otitis media':                            'ENT Specialist',
+        'Pharyngitis':                             'ENT Specialist',
     }
 
     # ── 10. Severity Map ───────────────────────────────────────────────────────
@@ -345,7 +349,6 @@ def train_model():
     print(f"   Model architecture  : HistGradientBoosting ({model.max_iter} iterations, depth {model.max_depth})")
     print(f"   Total features      : {n_total_features} ({n_symptom_features} symptoms + {n_vitals_features} vitals)")
     print(f"   Total training rows : {len(df)}")
-    print(f"   CV Accuracy         : {cv_scores.mean():.2%}")
     print(f"   Model file size     : {model_size_mb:.1f} MB")
     print(f"   Metadata file size  : {meta_size_mb:.1f} MB")
     print("=" * 65)

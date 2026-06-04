@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, Moon, Flame, Droplets, Footprints, Dumbbell } from "lucide-react"
 import { VitalsChart } from "@/components/vitals-chart"
@@ -13,39 +13,34 @@ interface DashboardStatsGridProps {
 
 export function DashboardStatsGrid({ initialMember, vitalsHistory }: DashboardStatsGridProps) {
     const [member, setMember] = useState(initialMember)
+    // Local overrides for weight/height - updated immediately after editing without waiting for re-fetch
+    const [localWeight, setLocalWeight] = useState<number | null>(null)
+    const [localHeight, setLocalHeight] = useState<number | null>(null)
+
+    // Pull weight/height from vitals history (latest log) as baseline
+    const historyWeight = vitalsHistory.length > 0 ? vitalsHistory[0].weight : 0
+    const historyHeight = vitalsHistory.length > 0 ? vitalsHistory[0].height : 0
+
+    // Use local overrides if user just edited them, otherwise fall back to history
+    const currentWeight = localWeight !== null ? localWeight : historyWeight
+    const currentHeight = localHeight !== null ? localHeight : historyHeight
+
+    // Merge weight/height into member for the edit dialog to pre-populate
+    const memberWithDimensions = useMemo(() => ({
+        ...member,
+        weight: currentWeight,
+        height: currentHeight,
+    }), [member, currentWeight, currentHeight])
 
     const handleUpdate = (updatedData?: any) => {
         if (updatedData) {
             // Merge updated data into local state
             setMember((prev: any) => ({ ...prev, ...updatedData }))
+            // If weight/height were edited, update local overrides for instant UI feedback
+            if (updatedData.weight > 0) setLocalWeight(updatedData.weight)
+            if (updatedData.height > 0) setLocalHeight(updatedData.height)
         }
     }
-
-    // Latest Stats (from member or last log) - prioritizing member's current snapshot
-    // Note: weight/height come from vitalsHistory logs usually, but let's assume if edited they might update member or we need to refetch.
-    // For this specific request, the user mentioned steps/sleep which are directly on the member model (snapshot).
-    // Weight/Height are technically in VitalLogs. If the dialog edits them, it currently updates FamilyMember model (?)
-    // Let's check updateFamilyMember action... 
-    // Assuming the dialog updates the fields we display.
-
-    // If weight/height are ONLY in logs, we might need a way to pass them back.
-    // But assuming the dialog updates the 'snapshot' fields on FamilyMember if they exist, or we just trust the return value.
-
-    // For simplicity and immediate feedback, we use the member state.
-    // However, weight/height might be derived from history in the original page.
-    // Let's look at how original page did it:
-    // const currentWeight = vitalsHistory.length > 0 ? vitalsHistory[vitalsHistory.length - 1].weight : 0
-
-    // If the edit dialog updates weight, it might not update the history log immediately unless we refetch.
-    // BUT the user specifically asked for "left tab if sleep, steps are edited must also be linked to the right side".
-    // Steps and Sleep are on the FamilyMember model. Weight/Height are usually logs.
-
-    const currentWeight = vitalsHistory.length > 0 ? vitalsHistory[0].weight : 0
-    const currentHeight = vitalsHistory.length > 0 ? vitalsHistory[0].height : 0
-
-    // If the dialog allows editing weight/height, we might want to override these if 'member' has them 
-    // (though our schema separates them). 
-    // For now, let's focus on Steps, Sleep, Heart Rate which are on the member.
 
     return (
         <div className="space-y-6">
@@ -66,7 +61,7 @@ export function DashboardStatsGrid({ initialMember, vitalsHistory }: DashboardSt
                         </div>
                         <div className="absolute top-2 right-4 z-20">
                             <div className="h-11 w-11 flex items-center justify-center"> {/* 44x44px Touch Target Wrapper */}
-                                <EditFamilyMemberDialog member={member} onUpdate={handleUpdate} />
+                                <EditFamilyMemberDialog member={memberWithDimensions} onUpdate={handleUpdate} />
                             </div>
                         </div>
                         <CardContent className="p-8 flex flex-col md:flex-row gap-8 items-center z-10 relative">

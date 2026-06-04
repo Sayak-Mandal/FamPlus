@@ -32,6 +32,10 @@ const VitalLogSchema = new mongoose.Schema({
     type: Date,
     default: Date.now, // Allows for retroactive logging of backdated vitals
     index: true
+  },
+  isEdited: {
+    type: Boolean,
+    default: false
   }
 }, { 
   timestamps: false // Manual 'recordedAt' is used instead of automatic timestamps

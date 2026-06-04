@@ -236,3 +236,34 @@
 .animate-wave-4 {
   animation: wave-bounce 0.8s ease-in-out infinite 0.45s;
 }
+
+/* Glassmorphism Ambient Glow Animations */
+@keyframes glass-pulse {
+  0%, 100% {
+    opacity: 0.25;
+    transform: scale(1) translate(0px, 0px);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.15) translate(8px, -8px);
+  }
+}
+
+@keyframes glass-pulse-delayed {
+  0%, 100% {
+    opacity: 0.15;
+    transform: scale(1.1) translate(0px, 0px);
+  }
+  50% {
+    opacity: 0.28;
+    transform: scale(0.9) translate(-10px, 10px);
+  }
+}
+
+.animate-glass-blob-1 {
+  animation: glass-pulse 8s ease-in-out infinite;
+}
+
+.animate-glass-blob-2 {
+  animation: glass-pulse-delayed 12s ease-in-out infinite;
+}

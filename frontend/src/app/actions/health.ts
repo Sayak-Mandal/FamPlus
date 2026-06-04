@@ -160,3 +160,16 @@ export async function deleteRecord(recordId: string) {
         return { success: false, error: "Failed to delete record" };
     }
 }
+
+export async function downloadRecordFile(fileUrl: string): Promise<Blob | null> {
+    try {
+        const response = await api.get(fileUrl, {
+            headers: getHeaders(),
+            responseType: 'blob'
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Failed to download record file", error);
+        return null;
+    }
+}

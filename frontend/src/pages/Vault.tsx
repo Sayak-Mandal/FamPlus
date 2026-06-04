@@ -13,8 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Upload, FileText, Trash2, Download, Search, Plus, Calendar, User, FileDigit } from 'lucide-react';
-import { getRecords, uploadRecord, deleteRecord, getFamilyMembers } from '@/app/actions/health';
+import { Upload, FileText, Trash2, Download, Search, Plus, Calendar, User, FileDigit, Eye, Loader2 } from 'lucide-react';
+import { getRecords, uploadRecord, deleteRecord, getFamilyMembers, downloadRecordFile } from '@/app/actions/health';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 const CATEGORIES = ['Prescription', 'Lab Report', 'Vaccination', 'Other'];
@@ -32,6 +32,13 @@ export default function Vault() {
     const [selectedMember, setSelectedMember] = useState("");
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
+
+    // Preview State
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewTitle, setPreviewTitle] = useState("");
+    const [previewType, setPreviewType] = useState("");
+    const [previewBlobUrl, setPreviewBlobUrl] = useState("");
 
     useEffect(() => {
         fetchData();
@@ -83,6 +90,62 @@ export default function Vault() {
         const res = await deleteRecord(id);
         if (res.success) fetchData();
     };
+
+    const handleDownload = async (fileUrl: string, title: string, fileType: string) => {
+        try {
+            const blob = await downloadRecordFile(fileUrl);
+            if (!blob) {
+                alert("Failed to download record file. Make sure you are authorized.");
+                return;
+            }
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', title);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            setTimeout(() => window.URL.revokeObjectURL(url), 10000);
+        } catch (error) {
+            console.error("Secure download failed:", error);
+        }
+    };
+
+    const handlePreview = async (fileUrl: string, title: string, fileType: string) => {
+        setPreviewLoading(true);
+        setPreviewTitle(title);
+        setPreviewType(fileType);
+        setIsPreviewOpen(true);
+        setPreviewBlobUrl(""); // Reset previous
+        
+        try {
+            const blob = await downloadRecordFile(fileUrl);
+            if (!blob) {
+                alert("Failed to load preview.");
+                setIsPreviewOpen(false);
+                return;
+            }
+            
+            // Set the correct MIME type for the blob based on the stored fileType
+            // This is important for the iframe to correctly render PDFs
+            const typedBlob = new Blob([blob], { type: fileType || 'application/pdf' });
+            const url = window.URL.createObjectURL(typedBlob);
+            setPreviewBlobUrl(url);
+        } catch (error) {
+            console.error("Secure preview failed:", error);
+            setIsPreviewOpen(false);
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    // Clean up blob URL when dialog closes
+    useEffect(() => {
+        if (!isPreviewOpen && previewBlobUrl) {
+            window.URL.revokeObjectURL(previewBlobUrl);
+            setPreviewBlobUrl("");
+        }
+    }, [isPreviewOpen]);
 
     const filteredRecords = records.filter(r => 
         r.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -154,6 +217,35 @@ export default function Vault() {
                                 {uploading ? "Uploading..." : "Confirm Upload"}
                             </Button>
                         </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Preview Dialog */}
+                <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                    <DialogContent className="rounded-[2rem] sm:max-w-4xl max-h-[90vh] flex flex-col">
+                        <DialogHeader>
+                            <DialogTitle className="text-xl font-bold">{previewTitle}</DialogTitle>
+                        </DialogHeader>
+                        <div className="flex-1 overflow-hidden bg-muted/20 rounded-xl min-h-[500px] flex items-center justify-center relative">
+                            {previewLoading ? (
+                                <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                                    <Loader2 className="h-8 w-8 animate-spin" />
+                                    <p className="font-medium">Loading preview...</p>
+                                </div>
+                            ) : previewBlobUrl ? (
+                                previewType?.startsWith('image/') ? (
+                                    <img src={previewBlobUrl} alt={previewTitle} className="max-w-full max-h-full object-contain p-2" />
+                                ) : previewType === 'application/pdf' || !previewType ? (
+                                    <iframe src={`${previewBlobUrl}#toolbar=0`} className="absolute inset-0 w-full h-full rounded-lg border-none" title={previewTitle} />
+                                ) : (
+                                    <div className="text-center text-muted-foreground">
+                                        <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                                        <p>Preview not available for this file type.</p>
+                                        <p className="text-sm mt-1">Please download the file to view it.</p>
+                                    </div>
+                                )
+                            ) : null}
+                        </div>
                     </DialogContent>
                 </Dialog>
             </div>
@@ -229,10 +321,23 @@ export default function Vault() {
                                         </TableCell>
                                         <TableCell className="text-right px-6">
                                             <div className="flex justify-end gap-2">
-                                                <Button size="icon" variant="ghost" className="rounded-xl hover:bg-primary/10 text-primary" asChild>
-                                                    <a href={record.fileUrl} target="_blank" rel="noopener noreferrer">
-                                                        <Download className="h-5 w-5" />
-                                                    </a>
+                                                <Button 
+                                                    size="icon" 
+                                                    variant="ghost" 
+                                                    className="rounded-xl hover:bg-blue-500/10 text-blue-500" 
+                                                    onClick={() => handlePreview(record.fileUrl, record.fileName || record.title, record.fileType)}
+                                                    title="Preview"
+                                                >
+                                                    <Eye className="h-5 w-5" />
+                                                </Button>
+                                                <Button 
+                                                    size="icon" 
+                                                    variant="ghost" 
+                                                    className="rounded-xl hover:bg-primary/10 text-primary" 
+                                                    onClick={() => handleDownload(record.fileUrl, record.fileName || record.title, record.fileType)}
+                                                    title="Download"
+                                                >
+                                                    <Download className="h-5 w-5" />
                                                 </Button>
                                                 <Button size="icon" variant="ghost" className="rounded-xl hover:bg-red-500/10 text-red-500" onClick={() => handleDelete(record._id)}>
                                                     <Trash2 className="h-5 w-5" />

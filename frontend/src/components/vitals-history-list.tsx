@@ -85,7 +85,15 @@ export function VitalsHistoryList({ logs, familyMemberId, onUpdated }: { logs: a
                         {formattedLogs.map((log) => (
                             <TableRow key={log.id}>
                                 <TableCell className="font-medium">
-                                    {log.recordedAt.toLocaleDateString()} <span className="text-xs text-muted-foreground">{log.recordedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span>{log.recordedAt.toLocaleDateString()}</span>
+                                        <span className="text-xs text-muted-foreground">{log.recordedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        {log.isEdited && (
+                                            <span className="text-[10px] bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                                Edited
+                                            </span>
+                                        )}
+                                    </div>
                                 </TableCell>
 
                                 {editingId === log.id ? (

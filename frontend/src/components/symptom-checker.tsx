@@ -10,8 +10,9 @@ import { getFamilyMembers, analyzeAndLogSymptom } from '@/app/actions/health'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff, Eye, FileText } from 'lucide-react'
 import { Link } from "react-router-dom";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useSpeechRecognition } from '@/hooks/use-speech-recognition'
@@ -56,6 +57,15 @@ export function SymptomChecker() {
     const [members, setMembers] = useState<any[]>([])
     const [selectedMember, setSelectedMember] = useState("")
     const [vitalsStatus, setVitalsStatus] = useState<'fresh' | 'stale' | 'none'>('none')
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState("");
+
+    React.useEffect(() => {
+        if (!isPreviewOpen && previewUrl) {
+            window.URL.revokeObjectURL(previewUrl);
+            setPreviewUrl("");
+        }
+    }, [isPreviewOpen, previewUrl]);
 
     React.useEffect(() => {
         const fetchMembers = async () => {
@@ -128,10 +138,9 @@ export function SymptomChecker() {
 
     /**
      * Generates a professional health report in PDF format.
-     * Incorporates patient data, vitals snapshots, and AI-driven clinical guidance.
      */
-    const handleDownloadPDF = () => {
-        if (!result) return;
+    const generatePDFDoc = () => {
+        if (!result) return null;
         
         const doc = new jsPDF();
 
@@ -296,17 +305,23 @@ export function SymptomChecker() {
         const splitWarning = doc.splitTextToSize(warningText, 180);
         doc.text(splitWarning, 14, pageHeight - 15);
         
-        // Explicitly create a Blob to ensure reliable cross-browser and OS downloading
-        const safeName = patientName.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const pdfBlob = doc.output('blob');
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Famplus_Health_Report_${safeName}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        return { doc, patientName };
+    };
+
+    const handleDownloadPDF = () => {
+        const generated = generatePDFDoc();
+        if (!generated) return;
+        const safeName = generated.patientName.replace(/[^a-zA-Z0-9_-]/g, '_');
+        generated.doc.save(`Famplus_Health_Report_${safeName}.pdf`);
+    };
+
+    const handlePreviewPDF = () => {
+        const generated = generatePDFDoc();
+        if (!generated) return;
+        const blob = generated.doc.output('blob');
+        const url = window.URL.createObjectURL(blob);
+        setPreviewUrl(url);
+        setIsPreviewOpen(true);
     };
 
     return (
@@ -593,14 +608,35 @@ export function SymptomChecker() {
                                         </Link>
                                     </Button>
 
-                                    <Button
-                                        variant="outline"
-                                        className="w-full h-14 rounded-2xl gap-3 text-lg font-bold border-2 bg-background hover:bg-muted text-foreground"
-                                        onClick={handleDownloadPDF}
-                                    >
-                                        <Download className="h-5 w-5" />
-                                        Download AI Report (PDF)
-                                    </Button>
+                                    <div className="flex items-center justify-between w-full h-14 px-4 rounded-2xl border-2 bg-background text-foreground">
+                                        <div className="flex items-center gap-3 ml-2">
+                                            <div className="p-1.5 bg-primary/10 rounded-lg">
+                                                <FileText className="h-4 w-4 text-primary" />
+                                            </div>
+                                            <span className="text-lg font-bold">AI Report</span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-10 w-10 rounded-xl hover:bg-muted hover:text-primary transition-colors"
+                                                onClick={handlePreviewPDF}
+                                                title="Preview"
+                                            >
+                                                <Eye className="h-5 w-5" />
+                                            </Button>
+                                            <div className="w-px h-6 bg-border mx-1"></div>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-10 w-10 rounded-xl hover:bg-muted hover:text-primary transition-colors"
+                                                onClick={handleDownloadPDF}
+                                                title="Download"
+                                            >
+                                                <Download className="h-5 w-5" />
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -646,6 +682,20 @@ export function SymptomChecker() {
                                 </p>
                             </div>
                         )}
+                        
+                        {/* Preview Dialog */}
+                        <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                            <DialogContent className="rounded-[2rem] sm:max-w-4xl max-h-[90vh] flex flex-col">
+                                <DialogHeader>
+                                    <DialogTitle className="text-xl font-bold">AI Health Report Preview</DialogTitle>
+                                </DialogHeader>
+                                <div className="flex-1 overflow-hidden bg-muted/20 rounded-xl min-h-[500px] flex items-center justify-center relative">
+                                    {previewUrl && (
+                                        <iframe src={`${previewUrl}#toolbar=0`} className="absolute inset-0 w-full h-full rounded-lg border-none" title="AI Health Report" />
+                                    )}
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 )}
             </CardContent>

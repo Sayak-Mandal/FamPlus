@@ -37,6 +37,7 @@ export default function HistoryPage() {
                 height: log.height,
                 heartRate: log.heartRate,
                 hydration: log.hydration,
+                isEdited: log.isEdited,
             })))
         } catch (e) {
             console.error(e)

@@ -2386,27 +2386,38 @@ async def predict_wellness(request: WellnessRequest):
     df = pd.DataFrame([h.dict() for h in history])
     df['sys'], df['dia'] = zip(*df['bloodPressure'].apply(parse_bp))
 
-    # Focus on the last 5 readings for the trend
+    # The LAST entry represents the most current (live) vitals from the dashboard
+    latest = df.iloc[-1]
+
+    # Focus on the last 5 readings for trend analysis (blood pressure)
     recent = df.tail(5)
     r_sys  = recent['sys'].mean()
     r_dia  = recent['dia'].mean()
-    r_hr   = recent['heartRate'].mean()
+
+    # Use the LATEST heart rate directly (not averaged) — this is the live value from the member edit
+    r_hr   = latest['heartRate']
 
     risk      = 0
     anomalies = []
 
-    # Blood pressure check (standard clinical thresholds)
+    # Blood pressure check (standard clinical thresholds) — use recent average for stability
     if r_sys > 140 or r_dia > 90:
         risk += 40
         anomalies.append("Elevated Blood Pressure")
 
-    # Heart rate check (normal resting: 60–100 bpm)
+    # Heart rate check (normal resting: 60–100 bpm) — use the LIVE latest reading
     if r_hr > 100:
         risk += 40
         anomalies.append("Elevated Heart Rate")
+    elif r_hr < 50:
+        risk += 40
+        anomalies.append("Very Low Heart Rate (Bradycardia)")
+    elif r_hr < 60:
+        risk += 20
+        anomalies.append("Low Heart Rate")
 
-    # Sleep quality check (using latest entry)
-    sleep_hours = parse_sleep(df['sleep'].iloc[-1])
+    # Sleep quality check (using latest entry — most current sleep data)
+    sleep_hours = parse_sleep(latest['sleep'])
     if sleep_hours < 6:
         risk += 20
         anomalies.append("Insufficient Sleep")
@@ -2420,7 +2431,7 @@ async def predict_wellness(request: WellnessRequest):
         status         = "Requires Monitoring"
         recommendation = "Some vitals are slightly elevated. Consider lifestyle adjustments and follow up with a doctor."
     else:
-        status         = "Consult a Doctor"
+        status         = "High Risk — Consult a Doctor"
         recommendation = "Your vitals indicate potential health concerns. Please consult a General Physician soon."
 
     return WellnessResponse(

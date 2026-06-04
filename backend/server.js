@@ -36,11 +36,31 @@ const slugify = require('slugify');
 const app = express();
 // Middleware
 app.use(helmet()); // Basic security headers
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// Static serving for uploaded records
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Custom middleware to sanitize inputs against NoSQL injection (Express v5 compatible)
+function sanitizeObject(obj) {
+  if (obj && typeof obj === 'object') {
+    for (const key in obj) {
+      if (key.startsWith('$') || key.includes('.')) {
+        delete obj[key];
+      } else {
+        sanitizeObject(obj[key]);
+      }
+    }
+  }
+}
+app.use((req, res, next) => {
+  if (req.body) sanitizeObject(req.body);
+  if (req.query) sanitizeObject(req.query);
+  if (req.params) sanitizeObject(req.params);
+  next();
+});
 
 // Multer Configuration for Vault
 const storage = multer.diskStorage({
@@ -80,6 +100,16 @@ const limiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', limiter);
+
+// Strict Rate Limiting for Authentication Routes (10 requests per 15 minutes)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many login or registration attempts. Please try again after 15 minutes.' }
+});
+app.use('/api/auth/', authLimiter);
 
 // MongoDB URI from environment
 const MONGODB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/famplus';
@@ -235,7 +265,12 @@ const AI_ENGINE_URL = process.env.AI_ENGINE_URL || 'http://localhost:8000';
  */
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers['authorization'] || req.headers['Authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = authHeader && authHeader.split(' ')[1];
+
+  // Support authenticated downloads via link/query param
+  if (!token && req.query.token) {
+    token = req.query.token;
+  }
 
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized: Missing or invalid token. Please log in again.' });
@@ -278,15 +313,100 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+/**
+ * Validation Middleware for Auth Input
+ */
+const validateAuthInput = (req, res, next) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Email and password must be valid strings' });
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+  }
+  next();
+};
+
+/**
+ * Access Control Middleware for Family Members (IDOR Protection)
+ * Verifies that the family member belongs to the logged-in user's family circle.
+ */
+const requireMemberAccess = async (req, res, next) => {
+  try {
+    const memberId = req.params.memberId;
+    if (!mongoose.Types.ObjectId.isValid(memberId)) {
+      return res.status(400).json({ error: 'Invalid member ID format' });
+    }
+
+    if (!dbConnected) {
+      return res.status(503).json({ error: 'Database disconnected' });
+    }
+
+    const member = await FamilyMember.findById(memberId);
+    if (!member) {
+      return res.status(404).json({ error: 'Family member not found' });
+    }
+
+    if (!req.user.familyCircleId || member.familyCircleId.toString() !== req.user.familyCircleId.toString()) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this family member' });
+    }
+
+    req.member = member;
+    next();
+  } catch (err) {
+    console.error('Member access authorization error:', err);
+    res.status(500).json({ error: 'Server authorization check failed' });
+  }
+};
+
+/**
+ * Access Control Middleware for Vital Logs (IDOR Protection)
+ * Verifies that the vital log belongs to a member within the user's family circle.
+ */
+const requireVitalLogAccess = async (req, res, next) => {
+  try {
+    const logId = req.params.logId;
+    if (!mongoose.Types.ObjectId.isValid(logId)) {
+      return res.status(400).json({ error: 'Invalid log ID format' });
+    }
+
+    if (!dbConnected) {
+      return res.status(503).json({ error: 'Database disconnected' });
+    }
+
+    const log = await VitalLog.findById(logId);
+    if (!log) {
+      return res.status(404).json({ error: 'Vital log not found' });
+    }
+
+    const member = await FamilyMember.findById(log.familyMemberId);
+    if (!member || !req.user.familyCircleId || member.familyCircleId.toString() !== req.user.familyCircleId.toString()) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this vital log' });
+    }
+
+    req.vitalLog = log;
+    next();
+  } catch (err) {
+    console.error('Vital log access authorization error:', err);
+    res.status(500).json({ error: 'Server authorization check failed' });
+  }
+};
+
 // ─────────────────────────────────────────────
 // AUTH ROUTES
 // ─────────────────────────────────────────────
 
 // Register User
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', validateAuthInput, async (req, res) => {
   try {
     const { email, name, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     if (dbConnected) {
       const existingUser = await User.findOne({ email });
@@ -315,10 +435,9 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Login User
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', validateAuthInput, async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
     // Try DB if connected
     if (dbConnected) {
@@ -430,11 +549,22 @@ app.post('/api/family', requireAuth, async (req, res) => {
       const user = req.user;
       if (!user?.familyCircleId) return res.status(404).json({ error: 'Circle not found' });
 
+      const { name, relation, age, avatar, avatarColor } = req.body;
+      if (!name || !relation || age === undefined) {
+        return res.status(400).json({ error: 'Name, relation, and age are required' });
+      }
+      if (typeof name !== 'string' || typeof relation !== 'string' || typeof age !== 'number') {
+        return res.status(400).json({ error: 'Invalid input data types' });
+      }
+
       const member = await FamilyMember.create({
-        ...req.body,
+        name,
+        relation,
+        age,
+        avatar: typeof avatar === 'string' ? avatar : '',
+        avatarColor: typeof avatarColor === 'string' ? avatarColor : `#${Math.floor(Math.random() * 16777215).toString(16)}`,
         userId: user._id,
-        familyCircleId: user.familyCircleId,
-        avatarColor: req.body.avatarColor || `#${Math.floor(Math.random() * 16777215).toString(16)}`
+        familyCircleId: user.familyCircleId
       });
 
       // SYNC: If this is the user themselves (Self), update the User document too
@@ -454,42 +584,59 @@ app.post('/api/family', requireAuth, async (req, res) => {
 });
 
 // Update family member details
-app.put('/api/family/:memberId', requireAuth, async (req, res) => {
+app.put('/api/family/:memberId', requireAuth, requireMemberAccess, async (req, res) => {
   try {
-    // 1. Fetch old member to compare health metrics
-    const oldMember = await FamilyMember.findOne({ _id: req.params.memberId, familyCircleId: req.user.familyCircleId });
-    if (!oldMember) return res.status(404).json({ error: 'Member not found or unauthorized' });
+    const oldMember = req.member;
+    const updateData = {};
+    const whitelist = [
+      'name', 'relation', 'age', 'avatar', 'avatarColor',
+      'heartRate', 'bloodPressure', 'steps', 'sleep',
+      'workouts', 'water', 'activeCalories'
+    ];
 
-    // 2. Perform the update
+    whitelist.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    });
+
+    // Perform the update
     const member = await FamilyMember.findByIdAndUpdate(
       req.params.memberId,
-      { $set: req.body },
+      { $set: updateData },
       { new: true }
     );
 
-    // 3. Track if the user explicitly logged/updated their vitals
+    // Track if the user explicitly logged/updated their vitals
     const vitalsChanged = (
-      req.body.heartRate !== undefined && req.body.heartRate !== oldMember.heartRate ||
-      req.body.bloodPressure !== undefined && req.body.bloodPressure !== oldMember.bloodPressure ||
-      req.body.steps !== undefined && req.body.steps !== oldMember.steps ||
-      req.body.sleep !== undefined && req.body.sleep !== oldMember.sleep ||
-      req.body.water !== undefined && req.body.water !== oldMember.water ||
-      req.body.activeCalories !== undefined && req.body.activeCalories !== oldMember.activeCalories
+      updateData.heartRate !== undefined && updateData.heartRate !== oldMember.heartRate ||
+      updateData.bloodPressure !== undefined && updateData.bloodPressure !== oldMember.bloodPressure ||
+      updateData.steps !== undefined && updateData.steps !== oldMember.steps ||
+      updateData.sleep !== undefined && updateData.sleep !== oldMember.sleep ||
+      updateData.water !== undefined && updateData.water !== oldMember.water ||
+      updateData.activeCalories !== undefined && updateData.activeCalories !== oldMember.activeCalories
     );
 
     if (vitalsChanged) {
-      // Find the most recent VitalLog to carry over required fields (weight, height)
       const lastLog = await VitalLog.findOne({ familyMemberId: member._id }).sort({ recordedAt: -1 });
+
+      // Use explicitly-provided weight/height from the request body, falling back to last log or defaults
+      const newWeight = (req.body.weight !== undefined && req.body.weight > 0)
+        ? req.body.weight
+        : (lastLog ? lastLog.weight : 70);
+      const newHeight = (req.body.height !== undefined && req.body.height > 0)
+        ? req.body.height
+        : (lastLog ? lastLog.height : 170);
       
       await VitalLog.create({
         familyMemberId: member._id,
-        weight: lastLog ? lastLog.weight : 70, // Default fallback
-        height: lastLog ? lastLog.height : 170,
+        weight: newWeight,
+        height: newHeight,
         heartRate: member.heartRate || (lastLog ? lastLog.heartRate : 70),
         hydration: member.water ? member.water * 1000 : (lastLog ? lastLog.hydration : 2000),
         recordedAt: new Date()
       });
-      console.log(`📈 New VitalLog created for ${member.name} because vitals were updated.`);
+      console.log(`📈 New VitalLog created for ${member.name} (weight: ${newWeight}kg, height: ${newHeight}cm).`);
     }
 
     // SYNC: If this is the user themselves (Self), update the User document too
@@ -509,7 +656,7 @@ app.put('/api/family/:memberId', requireAuth, async (req, res) => {
 });
 
 // Delete family member
-app.delete('/api/family/:memberId', requireAuth, async (req, res) => {
+app.delete('/api/family/:memberId', requireAuth, requireMemberAccess, async (req, res) => {
   try {
     await FamilyMember.findByIdAndDelete(req.params.memberId);
     await VitalLog.deleteMany({ familyMemberId: req.params.memberId });
@@ -525,7 +672,7 @@ app.delete('/api/family/:memberId', requireAuth, async (req, res) => {
 // ─────────────────────────────────────────────
 
 // Get vitals for a family member
-app.get('/api/family/:memberId/vitals', requireAuth, async (req, res) => {
+app.get('/api/family/:memberId/vitals', requireAuth, requireMemberAccess, async (req, res) => {
   try {
     const logs = await VitalLog.find({ familyMemberId: req.params.memberId }).sort({ recordedAt: -1 }).limit(50);
     res.json(logs);
@@ -535,18 +682,25 @@ app.get('/api/family/:memberId/vitals', requireAuth, async (req, res) => {
 });
 
 // Add new vitals log
-app.post('/api/family/:memberId/vitals', requireAuth, async (req, res) => {
+app.post('/api/family/:memberId/vitals', requireAuth, requireMemberAccess, async (req, res) => {
   try {
+    const { weight, height, heartRate, hydration, recordedAt } = req.body;
+    if (weight === undefined || height === undefined || heartRate === undefined || hydration === undefined) {
+      return res.status(400).json({ error: 'Weight, height, heartRate, and hydration are required' });
+    }
+
     const log = await VitalLog.create({
-      ...req.body,
+      weight: Number(weight),
+      height: Number(height),
+      heartRate: Number(heartRate),
+      hydration: Number(hydration),
       familyMemberId: req.params.memberId,
-      recordedAt: req.body.recordedAt || new Date()
+      recordedAt: recordedAt || new Date()
     });
 
     // Update the snapshot on the family member as well for quick dashboard access
     await FamilyMember.findByIdAndUpdate(req.params.memberId, {
-      heartRate: req.body.heartRate,
-      bloodPressure: req.body.bloodPressure
+      heartRate: Number(heartRate)
     });
 
     res.status(201).json(log);
@@ -556,10 +710,20 @@ app.post('/api/family/:memberId/vitals', requireAuth, async (req, res) => {
 });
 
 // Update a vital log
-app.put('/api/vitals/:logId', requireAuth, async (req, res) => {
+app.put('/api/vitals/:logId', requireAuth, requireVitalLogAccess, async (req, res) => {
   try {
-    const log = await VitalLog.findByIdAndUpdate(req.params.logId, req.body, { new: true });
-    if (!log) return res.status(404).json({ error: 'Vital log not found' });
+    const { weight, height, heartRate, hydration, recordedAt } = req.body;
+    const updateData = {};
+    if (weight !== undefined) updateData.weight = Number(weight);
+    if (height !== undefined) updateData.height = Number(height);
+    if (heartRate !== undefined) updateData.heartRate = Number(heartRate);
+    if (hydration !== undefined) updateData.hydration = Number(hydration);
+    if (recordedAt !== undefined) updateData.recordedAt = recordedAt;
+
+    // Track that the vital log has been edited
+    updateData.isEdited = true;
+
+    const log = await VitalLog.findByIdAndUpdate(req.params.logId, updateData, { new: true });
     res.json(log);
   } catch (err) {
     console.error(err);
@@ -568,7 +732,7 @@ app.put('/api/vitals/:logId', requireAuth, async (req, res) => {
 });
 
 // Delete a vital log
-app.delete('/api/vitals/:logId', requireAuth, async (req, res) => {
+app.delete('/api/vitals/:logId', requireAuth, requireVitalLogAccess, async (req, res) => {
   try {
     await VitalLog.findByIdAndDelete(req.params.logId);
     res.json({ success: true });
@@ -588,13 +752,14 @@ app.delete('/api/vitals/:logId', requireAuth, async (req, res) => {
  * 2. Proxies request to the Python Inference Engine (FastAPI).
  * 3. Maps predicted results to severity levels and persists to MongoDB history.
  */
-app.post('/api/family/:memberId/analyze-symptoms', requireAuth, async (req, res) => {
+app.post('/api/family/:memberId/analyze-symptoms', requireAuth, requireMemberAccess, async (req, res) => {
   try {
     const { symptoms } = req.body;
     if (!symptoms) return res.status(400).json({ error: 'Symptoms are required' });
+    if (typeof symptoms !== 'string') return res.status(400).json({ error: 'Symptoms must be a valid string' });
     
-    // Retrieve family member details and construct vitals context
-    const member = await FamilyMember.findById(req.params.memberId);
+    // Retrieve family member details and construct vitals context (set by requireMemberAccess)
+    const member = req.member;
     let vitals_context = undefined;
     if (member) {
       const ageMinutes = member.latestVitalAt ? Math.floor((Date.now() - new Date(member.latestVitalAt).getTime()) / 60000) : undefined;
@@ -743,7 +908,7 @@ app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
  * 
  * @route POST /api/family/:memberId/wellness
  */
-app.post('/api/family/:memberId/wellness', requireAuth, async (req, res) => {
+app.post('/api/family/:memberId/wellness', requireAuth, requireMemberAccess, async (req, res) => {
   try {
     const logs = await VitalLog.find({ familyMemberId: req.params.memberId }).sort({ recordedAt: 1 });
 
@@ -751,7 +916,7 @@ app.post('/api/family/:memberId/wellness', requireAuth, async (req, res) => {
       return res.json({ score: 0, status: 'No Data', recommendation: 'Please log some vitals first.', anomalies: [] });
     }
 
-    const member = await FamilyMember.findById(req.params.memberId);
+    const member = req.member;
 
     const vitals_history = logs.map(l => ({
       bloodPressure: member?.bloodPressure || '120/80',
@@ -781,7 +946,19 @@ app.post('/api/records/upload', requireAuth, upload.single('file'), async (req, 
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     
     const { title, category, familyMemberId } = req.body;
-    if (!title || !familyMemberId) return res.status(400).json({ error: 'Title and Family Member are required' });
+    if (!title || !familyMemberId) {
+      const filePath = path.join(__dirname, 'uploads', req.file.filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(400).json({ error: 'Title and Family Member are required' });
+    }
+
+    // IDOR Check: Ensure the user has access to the family member
+    const member = await FamilyMember.findById(familyMemberId);
+    if (!member || !req.user.familyCircleId || member.familyCircleId.toString() !== req.user.familyCircleId.toString()) {
+      const filePath = path.join(__dirname, 'uploads', req.file.filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this family member' });
+    }
 
     const record = await Record.create({
       userId: req.userId,
@@ -798,6 +975,35 @@ app.post('/api/records/upload', requireAuth, upload.single('file'), async (req, 
   } catch (err) {
     console.error('Upload error:', err);
     res.status(500).json({ error: 'Failed to upload record' });
+  }
+});
+
+// Protected file download route (No public static serving)
+app.get('/uploads/:filename', requireAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Find the record by filename
+    const record = await Record.findOne({ fileName: filename });
+    if (!record) {
+      return res.status(404).json({ error: 'Medical record not found' });
+    }
+
+    // Verify access: Owner of the record OR member of the same family circle
+    const user = req.user;
+    if (record.userId.toString() === req.userId) {
+      return res.sendFile(path.join(__dirname, 'uploads', filename));
+    }
+
+    const recordMember = await FamilyMember.findById(record.familyMemberId);
+    if (recordMember && recordMember.familyCircleId && user.familyCircleId && recordMember.familyCircleId.toString() === user.familyCircleId.toString()) {
+      return res.sendFile(path.join(__dirname, 'uploads', filename));
+    }
+
+    return res.status(403).json({ error: 'Forbidden: You do not have access to this medical record' });
+  } catch (err) {
+    console.error('File serving error:', err);
+    res.status(500).json({ error: 'Failed to serve medical record' });
   }
 });
 
@@ -943,6 +1149,11 @@ app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().t
 // START SERVER
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Express server running on http://localhost:${PORT}`);
 });
+
+// DDoS mitigation: Set connection & header timeouts
+server.headersTimeout = 10 * 1000; // 10 seconds
+server.requestTimeout = 15 * 1000; // 15 seconds
+server.keepAliveTimeout = 5 * 1000; // 5 seconds
