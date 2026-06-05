@@ -81,7 +81,9 @@ export function MapComponent({ markers = [], center = defaultCenter, zoom = 13 }
             zoom={zoom}
             style={containerStyle}
             // @ts-ignore
-            scrollWheelZoom={false}
+            scrollWheelZoom={true}
+            // @ts-ignore
+            wheelPxPerZoomLevel={15}
         >
             <TileLayer
                 // @ts-ignore

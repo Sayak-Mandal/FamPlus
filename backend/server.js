@@ -1064,7 +1064,13 @@ app.get('/api/circle/details', requireAuth, async (req, res) => {
     if (!user?.familyCircleId) return res.status(404).json({ error: 'Circle not found' });
 
     const circle = await FamilyCircle.findById(user.familyCircleId).populate('members', 'email name avatar');
-    res.json(circle);
+
+    // Also fetch the FamilyMember documents belonging to this circle
+    const familyMembers = await FamilyMember.find({ familyCircleId: user.familyCircleId })
+      .select('name relation age avatar avatarColor userId')
+      .lean();
+
+    res.json({ ...circle.toObject(), familyMembers });
   } catch (err) {
     res.status(500).json({ error: 'Server error' });
   }

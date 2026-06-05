@@ -72,37 +72,83 @@ export function ManageCircleDialog() {
 
         <div className="space-y-6 py-4">
           {/* Members List */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Label className="text-sm font-medium text-muted-foreground">Members</Label>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2">
-              {circle?.members?.map((member: any) => (
-                <div key={member._id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold overflow-hidden border border-slate-200">
-                      {member.avatar ? (
-                        <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-sm">{member.name?.[0].toUpperCase() || "U"}</span>
-                      )}
+
+            {/* ── App Circle Members (registered accounts) ── */}
+            {circle?.members?.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/70 font-bold px-1">Account Members</p>
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {circle.members.map((member: any) => (
+                    <div key={member._id} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold overflow-hidden border border-slate-200 dark:border-slate-600 shrink-0">
+                          {member.avatar
+                            ? <img src={member.avatar} alt={member.name} className="w-full h-full object-cover" />
+                            : <span className="text-sm">{member.name?.[0]?.toUpperCase() || "U"}</span>
+                          }
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium leading-none">{member.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{member.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {circle.ownerId === member._id && (
+                          <Badge variant="secondary" className="gap-1 font-normal bg-indigo-50 text-indigo-700 hover:bg-indigo-50 border-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300">
+                            <Shield className="w-3 h-3" />Owner
+                          </Badge>
+                        )}
+                        {member._id === currentUserId && member._id !== circle.ownerId && (
+                          <Badge variant="outline" className="text-xs text-muted-foreground">You</Badge>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                        <p className="text-sm font-medium leading-none">{member.name}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{member.email}</p>
-                    </div>
-                  </div>
-                  {circle.ownerId === member._id && (
-                      <Badge variant="secondary" className="gap-1 font-normal bg-indigo-50 text-indigo-700 hover:bg-indigo-50 border-indigo-100">
-                          <Shield className="w-3 h-3" />
-                          Owner
-                      </Badge>
-                  )}
-                  {member._id === currentUserId && member._id !== circle.ownerId && (
-                      <Badge variant="outline" className="text-xs text-muted-foreground">You</Badge>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
+
+            {/* ── Family Member Profiles ── */}
+            {circle?.familyMembers?.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase tracking-widest text-muted-foreground/70 font-bold px-1">Family Profiles</p>
+                <div className="space-y-1.5 max-h-[200px] overflow-y-auto pr-1">
+                  {circle.familyMembers.map((fm: any) => (
+                    <div key={fm._id} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm overflow-hidden shrink-0 border-2 border-white dark:border-slate-700 shadow-sm"
+                          style={{ backgroundColor: fm.avatarColor || '#6366f1' }}
+                        >
+                          {fm.avatar
+                            ? <img src={fm.avatar} alt={fm.name} className="w-full h-full object-cover" />
+                            : <span>{fm.name?.[0]?.toUpperCase() || "?"}</span>
+                          }
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium leading-none">{fm.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {fm.age ? `Age ${fm.age}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs shrink-0 capitalize text-muted-foreground">
+                        {fm.relation}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!circle?.members?.length && !circle?.familyMembers?.length && (
+              <p className="text-sm text-muted-foreground text-center py-4">No members yet.</p>
+            )}
           </div>
+
 
           <hr className="border-slate-100" />
 

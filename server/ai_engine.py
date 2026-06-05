@@ -65,17 +65,19 @@ except OSError:
 
 app = FastAPI(title="Famplus AI Engine", version="4.0")
 
-# ── CORS ───────────────────────────────────────────────────────────────────────
-# Fix: wildcard allow_origins cannot be combined with allow_credentials=True per
-# the CORS spec — browsers will block the preflight. Use explicit origins instead.
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5001",
+    "http://127.0.0.1:5001",
+]
+frontend_url = os.getenv("FRONTEND_URL")
+if frontend_url:
+    origins.append(frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5001",
-        "http://127.0.0.1:5001",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -122,6 +124,10 @@ OLLAMA_CHECK_INTERVAL = 60  # Seconds between availability checks
 
 _ollama_available: Optional[bool] = None
 _ollama_last_check: float = 0
+
+# ── Groq LLM Configuration ────────────────────────────────────────────────────
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "gemma2-9b-it")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1938,6 +1944,183 @@ def predict_with_ollama(
     except Exception as e:
         print(f"⚠️  Ollama error: {e} — falling back to ML model")
         return None
+def predict_with_groq(
+    symptoms_text: str,
+    vitals: Optional[VitalsContext] = None,
+) -> Optional[SymptomResponse]:
+    """Calls the Groq LLM (Gemma) for clinical reasoning on symptoms.
+
+    Constructs a detailed prompt with symptom text and vitals context,
+    then requests structured JSON output via Groq's API.
+
+    Args:
+        symptoms_text: Raw user input (e.g., "heavy chest pain and dizziness").
+        vitals: Optional dashboard vitals for clinical context.
+
+    Returns:
+        A SymptomResponse if the LLM succeeds, or None to trigger fallback.
+    """
+    if not GROQ_API_KEY:
+        return None
+
+    try:
+        # ── Build user prompt with vitals context ─────────────────────────
+        user_msg = f"Patient reports: \"{symptoms_text}\""
+
+        if vitals:
+            parts = []
+            if vitals.age:
+                parts.append(f"Age: {vitals.age}")
+            if vitals.heart_rate:
+                parts.append(f"Heart Rate: {vitals.heart_rate} bpm")
+            if vitals.blood_pressure:
+                parts.append(f"Blood Pressure: {vitals.blood_pressure} mmHg")
+            if vitals.sleep:
+                parts.append(f"Sleep: {vitals.sleep}")
+            if parts:
+                user_msg += "\n\nPatient Vitals:\n" + "\n".join(f"- {p}" for p in parts)
+
+        user_msg += (
+            "\n\nAnalyze these symptoms carefully. Consider the most clinically "
+            "likely condition, provide your confidence level, the recommended "
+            "specialist, practical precautions, and next steps for the patient."
+        )
+
+        print(f"🤖 Groq request: model={GROQ_MODEL}, symptoms='{symptoms_text}'")
+
+        # ── Call Groq with JSON format ────────────────────────────────────
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": MEDICAL_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0,
+                },
+            )
+
+        if resp.status_code != 200:
+            print(f"⚠️  Groq HTTP {resp.status_code}: {resp.text}")
+            return None
+
+        content = resp.json().get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not content:
+            print("⚠️  Groq returned empty content")
+            return None
+
+        # ── Parse structured response ────────────────────────────────────
+        diagnosis = OllamaDiagnosis.model_validate_json(content)
+        confidence = max(0, min(100, diagnosis.confidence))
+
+        # Normalize specialist name
+        SPECIALIST_NORMALIZE = {
+            "heart/cardiac":                "Cardiologist",
+            "brain/neurological":           "Neurologist",
+            "lung/breathing":               "Pulmonologist",
+            "stomach/digestive":            "Gastroenterologist",
+            "skin":                         "Dermatologist",
+            "joint/bone":                   "Rheumatologist",
+            "thyroid/hormone":              "Endocrinologist",
+            "infections/fever":             "Infectious Disease Specialist",
+            "ear/nose/throat":              "ENT Specialist",
+            "urinary":                      "Urologist",
+            "liver":                        "Hepatologist",
+            "allergy":                      "Allergist",
+            "sleep":                        "Sleep Specialist",
+            "vascular":                     "Vascular Surgeon",
+            "general/unclear":              "General Physician",
+            "cardiologist":                 "Cardiologist",
+            "neurologist":                  "Neurologist",
+            "pulmonologist":                "Pulmonologist",
+            "gastroenterologist":           "Gastroenterologist",
+            "dermatologist":                "Dermatologist",
+            "rheumatologist":               "Rheumatologist",
+            "endocrinologist":              "Endocrinologist",
+            "infectious disease specialist": "Infectious Disease Specialist",
+            "ent specialist":               "ENT Specialist",
+            "urologist":                    "Urologist",
+            "hepatologist":                 "Hepatologist",
+            "allergist":                    "Allergist",
+            "sleep specialist":             "Sleep Specialist",
+            "vascular surgeon":             "Vascular Surgeon",
+            "general physician":            "General Physician",
+            "general practitioner":         "General Physician",
+            "gp":                           "General Physician",
+            "physician":                    "General Physician",
+            "family doctor":                "General Physician",
+            "family physician":             "General Physician",
+            "internist":                    "General Physician",
+            "primary care physician":       "General Physician",
+            "emergency physician":          "Cardiologist",
+            "emergency physician / toxicology": "General Physician",
+            "emergency medicine":           "Cardiologist",
+            "emergency doctor":             "Cardiologist",
+        }
+        raw_specialist = diagnosis.specialist.strip()
+        specialist = SPECIALIST_NORMALIZE.get(raw_specialist.lower(), raw_specialist)
+
+        VALID_SPECIALISTS = {
+            "Cardiologist", "Neurologist", "Pulmonologist", "Gastroenterologist",
+            "Dermatologist", "Rheumatologist", "Endocrinologist",
+            "Infectious Disease Specialist", "ENT Specialist", "Urologist",
+            "Hepatologist", "Allergist", "Sleep Specialist", "Vascular Surgeon",
+            "General Physician", "Psychiatrist", "Ophthalmologist",
+            "Pediatrician", "Orthopedic",
+        }
+        if specialist not in VALID_SPECIALISTS:
+            print(f"⚠️  Groq returned unknown specialist '{specialist}' → defaulting to General Physician")
+            specialist = "General Physician"
+
+        # Build vitals analysis annotations
+        vitals_analysis: List[str] = []
+        if vitals:
+            if vitals.heart_rate and vitals.heart_rate > 100:
+                vitals_analysis.append(f"❤️ Heart rate {vitals.heart_rate} bpm is elevated (tachycardia).")
+            elif vitals.heart_rate and vitals.heart_rate < 60:
+                vitals_analysis.append(f"❤️ Heart rate {vitals.heart_rate} bpm is low (bradycardia).")
+            if vitals.blood_pressure:
+                s, d = parse_bp(vitals.blood_pressure)
+                if s > 140 or d > 90:
+                    vitals_analysis.append(f"🩸 BP {vitals.blood_pressure} mmHg is elevated.")
+            if vitals.sleep:
+                sh = parse_sleep(vitals.sleep)
+                if sh < 5:
+                    vitals_analysis.append(f"😴 Sleep of {vitals.sleep} is insufficient.")
+
+        top_matches = [
+            TopMatch(condition=tm.condition, confidence=max(0, min(100, tm.confidence)))
+            for tm in diagnosis.top_matches[:3]
+        ]
+
+        print(f"🤖 Groq result: {diagnosis.condition} ({confidence}%) → {specialist}")
+
+        return SymptomResponse(
+            condition       = diagnosis.condition,
+            confidence      = confidence,
+            advice          = diagnosis.advice,
+            specialist      = specialist,
+            description     = diagnosis.description or "No description available.",
+            precautions     = diagnosis.precautions[:4],
+            urgency         = diagnosis.urgency if diagnosis.urgency in ("Normal", "High", "Emergency") else "Normal",
+            top_matches     = top_matches,
+            next_steps      = diagnosis.next_steps[:4],
+            vitals_analysis = vitals_analysis,
+        )
+
+    except httpx.TimeoutException:
+        print("⚠️  Groq timed out — falling back to Ollama or ML model")
+        return None
+    except Exception as e:
+        print(f"⚠️  Groq error: {e} — falling back to Ollama or ML model")
+        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2350,8 +2533,15 @@ async def predict_symptoms(request: SymptomRequest):
         print(f"⚡ Fast-First Strategy: Returning ML result (Confidence: {final_confidence}%, Urgency: {urgency})")
         return ml_response
 
-    # ── Ollama LLM Reasoning Path ─────────────────────────────────────────────
-    # For ambiguous or lower confidence cases, invoke the LLM for deep reasoning.
+    # ── LLM Reasoning Path ────────────────────────────────────────────────────
+    # For ambiguous or lower confidence cases, invoke an LLM (Groq or Ollama) for deep reasoning.
+    if GROQ_API_KEY:
+        print("🧠 Invoking Groq (Gemma) for deep reasoning on complex case...")
+        groq_result = predict_with_groq(data.symptoms, data.vitals_context)
+        if groq_result is not None:
+            return groq_result
+        print("⚠️  Groq returned None, trying Ollama...")
+
     if is_ollama_available():
         print("🧠 Invoking Ollama for deep reasoning on complex case...")
         ollama_result = predict_with_ollama(data.symptoms, data.vitals_context)

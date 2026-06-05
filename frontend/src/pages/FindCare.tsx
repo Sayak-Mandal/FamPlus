@@ -38,14 +38,14 @@ const SPECIALIST_MATCH_MAP: Record<string, string[]> = {
     'ENT Specialist':                  ['ENT Specialist'],
     'Sleep Specialist':                ['Sleep Specialist'],
     'Hepatologist':                    ['Hepatologist'],
-    // Specialists not in local list → map to closest available
-    'Pulmonologist':                   ['General Physician'],
-    'Rheumatologist':                  ['Orthopedic', 'General Physician'],
-    'Endocrinologist':                 ['General Physician'],
-    'Allergist':                       ['General Physician'],
-    'Infectious Disease Specialist':   ['General Physician'],
-    'Urologist':                       ['General Physician'],
-    'Vascular Surgeon':                ['General Physician'],
+    // Specialists now in local list → resolve directly
+    'Pulmonologist':                   ['Pulmonologist', 'General Physician'],
+    'Rheumatologist':                  ['Rheumatologist', 'Orthopedic', 'General Physician'],
+    'Endocrinologist':                 ['Endocrinologist', 'General Physician'],
+    'Allergist':                       ['Allergist', 'General Physician'],
+    'Infectious Disease Specialist':   ['Infectious Disease Specialist', 'General Physician'],
+    'Urologist':                       ['Urologist', 'General Physician'],
+    'Vascular Surgeon':                ['Vascular Surgeon', 'General Physician'],
     'Emergency Physician / Toxicology': ['General Physician'],
     'Professional Exorcist':           [],  // handled as easter egg
 }
@@ -57,6 +57,24 @@ const SPECIALIST_MATCH_MAP: Record<string, string[]> = {
  */
 function findLocalDoctors(specialist: string): { doctors: Doctor[]; resolvedSpecialty: string } {
     const normalized = specialist.trim()
+
+    // ── Easter Egg: Ghost of Park Street ─────────────────────────────────────
+    if (normalized === 'Professional Exorcist') {
+        return {
+            resolvedSpecialty: 'Professional Exorcist',
+            doctors: [{
+                id: 'ghost-1',
+                name: 'The Ghost of Park Street',
+                specialty: 'Professional Exorcist',
+                hospital: 'South Park Street Cemetery',
+                address: '52, Park St, Mullick Bazar, Park Street area, Kolkata, West Bengal 700017',
+                rating: 4.9,
+                lat: 22.5462025,
+                lng: 88.3602216,
+                phone: 'BOO-GHOST-BUSTERS'
+            }]
+        }
+    }
 
     // 1. Try exact match first
     const exact = ALL_DOCTORS.filter(d => d.specialty.toLowerCase() === normalized.toLowerCase())
@@ -468,9 +486,9 @@ function FindCareContent() {
                                                                 setCopiedId(id);
                                                                 setTimeout(() => {
                                                                     setCopiedId(null);
-                                                                    const dest = doctor.address
-                                                                        ? encodeURIComponent(doctor.address)
-                                                                        : `${doctor.lat},${doctor.lng}`;
+                                                                    // Always use lat,lng so Google Maps points to the exact
+                                                                    // same location as the Leaflet pin (avoids geocoding drift)
+                                                                    const dest = `${doctor.lat},${doctor.lng}`;
                                                                     window.open(`https://www.google.com/maps/dir/?api=1&destination=${dest}`, '_blank');
                                                                 }, 1000);
                                                             }}
