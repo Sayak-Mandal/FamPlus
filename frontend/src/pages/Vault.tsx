@@ -325,7 +325,7 @@ export default function Vault() {
                                                     size="icon" 
                                                     variant="ghost" 
                                                     className="rounded-xl hover:bg-blue-500/10 text-blue-500" 
-                                                    onClick={() => handlePreview(record.fileUrl, record.fileName || record.title, record.fileType)}
+                                                    onClick={() => handlePreview(`/uploads/${record.fileName}`, record.title, record.fileType)}
                                                     title="Preview"
                                                 >
                                                     <Eye className="h-5 w-5" />
@@ -334,7 +334,7 @@ export default function Vault() {
                                                     size="icon" 
                                                     variant="ghost" 
                                                     className="rounded-xl hover:bg-primary/10 text-primary" 
-                                                    onClick={() => handleDownload(record.fileUrl, record.fileName || record.title, record.fileType)}
+                                                    onClick={() => handleDownload(`/uploads/${record.fileName}`, record.fileName || record.title, record.fileType)}
                                                     title="Download"
                                                 >
                                                     <Download className="h-5 w-5" />

@@ -16,6 +16,10 @@ import { useState, useEffect } from "react"
 import { updateFamilyMember } from "@/app/actions/health"
 import { useFamilyContext } from "@/app/family-context"
 
+/**
+ * Interface defining the expected schema of a family member 
+ * object passed into the editing dialog.
+ */
 interface EditFamilyMemberDialogProps {
     member: {
         id?: string
@@ -41,6 +45,12 @@ const AVATAR_SEEDS = [
     'Duke', 'Zoe', 'Sadie', 'Ginger'
 ];
 
+/**
+ * @component EditFamilyMemberDialog
+ * @description A modal dialog used for updating a family member's core profile 
+ * (Name, Age) and current vitals/health metrics. Also allows changing their 
+ * procedural avatar. Syncs updates globally via `FamilyContext`.
+ */
 export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDialogProps) {
     const { refresh } = useFamilyContext()
     const [open, setOpen] = useState(false)
@@ -63,6 +73,8 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
         height: (member as any).height?.toString() || "",
     })
 
+    // Synchronize local form state with the incoming member prop
+    // whenever the dialog is closed or the underlying member changes.
     useEffect(() => {
         if (!open) {
             setIsEditingAvatar(false)
@@ -84,6 +96,10 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
         }
     }, [open, member])
 
+    /**
+     * Handles form submission, converting string inputs back to appropriate 
+     * numerical types before calling the backend update action.
+     */
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         setLoading(true)
@@ -140,24 +156,24 @@ export function EditFamilyMemberDialog({ member, onUpdate }: EditFamilyMemberDia
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px] rounded-3xl p-0 overflow-hidden border-none shrink-0 border">
-                <button
-                    type="button"
-                    onClick={() => setIsEditingAvatar(!isEditingAvatar)}
-                    className="absolute right-12 top-3.5 z-10 group h-12 w-12 shrink-0 rounded-full overflow-hidden transition-all hover:ring-2 hover:ring-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-pastel-blue"
-                >
-                    {formData.avatar ? (
-                        <img src={formData.avatar} alt="avatar" className="w-full h-full object-cover pt-1" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center font-bold text-lg bg-primary/20 text-primary">
-                            {formData.name?.[0] || 'A'}
+                <div className="p-6 max-h-[85vh] overflow-y-auto custom-scrollbar relative">
+                    <button
+                        type="button"
+                        onClick={() => setIsEditingAvatar(!isEditingAvatar)}
+                        className="absolute right-12 top-3.5 z-10 group h-12 w-12 shrink-0 rounded-full overflow-hidden transition-all hover:ring-2 hover:ring-primary/50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-pastel-blue"
+                    >
+                        {formData.avatar ? (
+                            <img src={formData.avatar} alt="avatar" className="w-full h-full object-cover pt-1" />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center font-bold text-lg bg-primary/20 text-primary">
+                                {formData.name?.[0] || 'A'}
+                            </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Pencil className="h-4 w-4 text-white" />
                         </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Pencil className="h-4 w-4 text-white" />
-                    </div>
-                </button>
-                <div className="p-6 max-h-[85vh] overflow-y-auto custom-scrollbar">
-                    <DialogHeader>
+                    </button>
+                    <DialogHeader className="pr-16">
                         <DialogTitle>Edit Profile & Vitals</DialogTitle>
                         <DialogDescription>
                             Update details for {member.name}.

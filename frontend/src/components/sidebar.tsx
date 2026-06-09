@@ -120,7 +120,7 @@ export function Sidebar({ onClose, isCollapsed, onToggle }: { onClose?: () => vo
                 {!isCollapsed && (
                     <div className="bg-accent/50 rounded-2xl p-4 border border-border mb-4">
                         <p className="text-[10px] text-muted-foreground mb-2 font-black uppercase tracking-widest text-primary/70">Pro Tip</p>
-                        <p className="text-sm text-foreground leading-snug">Log symptoms daily for better AI insights.</p>
+                        <p className="text-sm text-foreground leading-snug">Log vitals daily for better AI insights.</p>
                     </div>
                 )}
                 <div className={cn(

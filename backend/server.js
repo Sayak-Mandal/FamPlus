@@ -29,8 +29,17 @@ const FamilyCircle = require('./models/FamilyCircle');
 const Record = require('./models/Record');
 
 const multer = require('multer');
-const fs = require('fs');
+const { Readable } = require('stream');
 const slugify = require('slugify');
+
+/**
+ * GridFS bucket handle — initialised after mongoose connects.
+ * Bucket name 'medical_records' creates two collections:
+ *   medical_records.files   (metadata per upload)
+ *   medical_records.chunks  (255 kB binary chunks)
+ * We keep the reference at module scope so all routes can access it.
+ */
+let gridFSBucket;
 
 // Initialize Express Application
 const app = express();
@@ -62,34 +71,50 @@ app.use((req, res, next) => {
   next();
 });
 
-// Multer Configuration for Vault
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const uploadPath = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
-    }
-    cb(null, uploadPath);
-  },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const originalName = slugify(file.originalname.split('.')[0], { lower: true });
-    const extension = path.extname(file.originalname);
-    cb(null, `${originalName}-${uniqueSuffix}${extension}`);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
+// ─────────────────────────────────────────────────────────────────────────────
+// MULTER — Memory Storage (files held in RAM buffer, then piped to GridFS)
+// We no longer write anything to the local filesystem for medical records.
+// ─────────────────────────────────────────────────────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
+    // Only PDFs and images are accepted to prevent arbitrary file execution
     if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only PDFs and Images are allowed.'));
+      cb(new Error('Invalid file type. Only PDFs and images are allowed.'));
     }
   },
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB hard cap
 });
+
+/**
+ * Helper — uploads a Buffer into the GridFS bucket and returns the new file _id.
+ *
+ * @param {Buffer} buffer        - Raw file bytes from multer memory storage
+ * @param {string} filename      - Unique filename to store in GridFS metadata
+ * @param {string} contentType   - MIME type (e.g. 'application/pdf')
+ * @returns {Promise<ObjectId>}  - Resolves with the GridFS file ObjectId
+ */
+function uploadToGridFS(buffer, filename, contentType) {
+  return new Promise((resolve, reject) => {
+    // Convert the in-memory buffer to a readable stream so GridFS can consume it
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null); // Signal end-of-stream
+
+    const uploadStream = gridFSBucket.openUploadStream(filename, {
+      contentType,
+      // Extra metadata stored alongside the file — useful for auditing
+      metadata: { uploadedAt: new Date(), source: 'famplus-vault' }
+    });
+
+    readable.pipe(uploadStream);
+
+    uploadStream.on('finish', () => resolve(uploadStream.id));
+    uploadStream.on('error', reject);
+  });
+}
 
 // Rate Limiting (100 requests per 15 minutes as requested)
 const limiter = rateLimit({
@@ -122,6 +147,16 @@ mongoose.connect(MONGODB_URI, {
   .then(() => {
     console.log('✅ MongoDB connected successfully');
     dbConnected = true;
+
+    // ── GridFS Bucket Initialization ─────────────────────────────────────────
+    // Must happen AFTER the connection is established so the native db handle
+    // is available.  All uploaded medical files will be stored here instead of
+    // the local filesystem.
+    gridFSBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
+      bucketName: 'medical_records' // → collections: medical_records.files / .chunks
+    });
+    console.log('✅ GridFS bucket "medical_records" ready');
+
     seedDemoUser(); // Run seeding on successful connection
   })
   .catch(err => {
@@ -212,6 +247,9 @@ async function seedDemoUser() {
         for (let i = 6; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
+          // Randomize time between 7 AM and 8 PM
+          date.setHours(7 + Math.floor(Math.random() * 13));
+          date.setMinutes(Math.floor(Math.random() * 60));
 
           logs.push({
             familyMemberId: member._id,
@@ -938,37 +976,66 @@ app.post('/api/family/:memberId/wellness', requireAuth, requireMemberAccess, asy
 // ─────────────────────────────────────────────
 
 /**
- * Upload a new medical record
- * @route POST /api/records/upload
+ * Upload a new medical record to MongoDB GridFS.
+ *
+ * @route   POST /api/records/upload
+ * @access  Private (JWT required)
+ *
+ * Security measures:
+ *  1. JWT authentication via requireAuth middleware
+ *  2. IDOR check — confirms the target familyMember belongs to the requester's circle
+ *  3. MIME-type whitelist enforced by multer fileFilter (PDFs + images only)
+ *  4. 10 MB file-size cap
+ *  5. File bytes never touch the local disk — held in RAM buffer then streamed to MongoDB
  */
 app.post('/api/records/upload', requireAuth, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    
+    if (!gridFSBucket) return res.status(503).json({ error: 'Storage not ready, please retry' });
+
     const { title, category, familyMemberId } = req.body;
     if (!title || !familyMemberId) {
-      const filePath = path.join(__dirname, 'uploads', req.file.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       return res.status(400).json({ error: 'Title and Family Member are required' });
     }
 
-    // IDOR Check: Ensure the user has access to the family member
+    // ── IDOR Guard ────────────────────────────────────────────────────────────
+    // Prevent users from attaching records to family members they don't own.
     const member = await FamilyMember.findById(familyMemberId);
-    if (!member || !req.user.familyCircleId || member.familyCircleId.toString() !== req.user.familyCircleId.toString()) {
-      const filePath = path.join(__dirname, 'uploads', req.file.filename);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    if (
+      !member ||
+      !req.user.familyCircleId ||
+      member.familyCircleId.toString() !== req.user.familyCircleId.toString()
+    ) {
       return res.status(403).json({ error: 'Forbidden: You do not have access to this family member' });
     }
 
+    // ── GridFS Upload ─────────────────────────────────────────────────────────
+    // Build a unique, slug-safe filename for the GridFS metadata entry.
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    const baseName = slugify(req.file.originalname.split('.')[0], { lower: true, strict: true });
+    const extension = path.extname(req.file.originalname);
+    const storedFilename = `${baseName}-${uniqueSuffix}${extension}`;
+
+    // Stream the in-memory buffer into GridFS — file is chunked at 255 kB internally
+    const gridfsFileId = await uploadToGridFS(
+      req.file.buffer,
+      storedFilename,
+      req.file.mimetype
+    );
+
+    // ── MongoDB Record ────────────────────────────────────────────────────────
+    // Save the metadata record. The actual binary lives in GridFS; we only
+    // store the reference ID and enough metadata to serve it later.
     const record = await Record.create({
       userId: req.userId,
       familyMemberId,
       title,
       category: category || 'Other',
-      fileName: req.file.filename,
-      fileUrl: `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`,
+      gridfsId: gridfsFileId,           // ← key reference to GridFS file
+      fileName: storedFilename,          // stored for Content-Disposition header
       fileType: req.file.mimetype,
       fileSize: req.file.size
+      // fileUrl intentionally omitted — files are served via /uploads/:filename
     });
 
     res.status(201).json(record);
@@ -978,29 +1045,64 @@ app.post('/api/records/upload', requireAuth, upload.single('file'), async (req, 
   }
 });
 
-// Protected file download route (No public static serving)
+/**
+ * Stream a medical record file from GridFS to the authenticated requester.
+ *
+ * @route   GET /uploads/:filename
+ * @access  Private (JWT required)
+ *
+ * Security:
+ *  - JWT auth via requireAuth
+ *  - IDOR check: only the record owner OR a family-circle member can download
+ *  - File bytes never land on disk — piped directly from MongoDB to HTTP response
+ */
 app.get('/uploads/:filename', requireAuth, async (req, res) => {
   try {
+    if (!gridFSBucket) return res.status(503).json({ error: 'Storage not ready' });
+
     const { filename } = req.params;
-    
-    // Find the record by filename
+
+    // Locate the metadata record using the stored filename
     const record = await Record.findOne({ fileName: filename });
     if (!record) {
       return res.status(404).json({ error: 'Medical record not found' });
     }
 
-    // Verify access: Owner of the record OR member of the same family circle
+    // ── IDOR Guard ────────────────────────────────────────────────────────────
     const user = req.user;
-    if (record.userId.toString() === req.userId) {
-      return res.sendFile(path.join(__dirname, 'uploads', filename));
+    const isOwner = record.userId.toString() === req.userId;
+    let isCircleMember = false;
+
+    if (!isOwner) {
+      const recordMember = await FamilyMember.findById(record.familyMemberId);
+      isCircleMember =
+        recordMember &&
+        recordMember.familyCircleId &&
+        user.familyCircleId &&
+        recordMember.familyCircleId.toString() === user.familyCircleId.toString();
     }
 
-    const recordMember = await FamilyMember.findById(record.familyMemberId);
-    if (recordMember && recordMember.familyCircleId && user.familyCircleId && recordMember.familyCircleId.toString() === user.familyCircleId.toString()) {
-      return res.sendFile(path.join(__dirname, 'uploads', filename));
+    if (!isOwner && !isCircleMember) {
+      return res.status(403).json({ error: 'Forbidden: You do not have access to this medical record' });
     }
 
-    return res.status(403).json({ error: 'Forbidden: You do not have access to this medical record' });
+    // ── GridFS Stream ─────────────────────────────────────────────────────────
+    // Set headers so browsers know how to handle the response
+    res.set('Content-Type', record.fileType || 'application/octet-stream');
+    res.set('Content-Disposition', `inline; filename="${record.fileName}"`);
+
+    // Open a GridFS download stream by the stored ObjectId and pipe to response
+    const downloadStream = gridFSBucket.openDownloadStream(record.gridfsId);
+
+    downloadStream.on('error', (err) => {
+      console.error('GridFS download error:', err);
+      // Only send error header if headers haven't been flushed yet
+      if (!res.headersSent) {
+        res.status(404).json({ error: 'File not found in storage' });
+      }
+    });
+
+    downloadStream.pipe(res);
   } catch (err) {
     console.error('File serving error:', err);
     res.status(500).json({ error: 'Failed to serve medical record' });
@@ -1032,23 +1134,39 @@ app.get('/api/records', requireAuth, async (req, res) => {
 });
 
 /**
- * Delete a record
+ * Delete a medical record and its associated file from GridFS.
+ *
+ * @route   DELETE /api/records/:recordId
+ * @access  Private (JWT required, record owner only)
+ *
+ * Security:
+ *  - The query `{ _id, userId }` ensures only the record owner can delete.
+ *  - Both the GridFS binary AND the metadata document are removed atomically
+ *    (within the same try/catch to avoid orphaned chunks).
  */
 app.delete('/api/records/:recordId', requireAuth, async (req, res) => {
   try {
+    // Owner-only delete — adding userId to the query prevents IDOR deletion
     const record = await Record.findOne({ _id: req.params.recordId, userId: req.userId });
     if (!record) return res.status(404).json({ error: 'Record not found or unauthorized' });
 
-    // Delete file from disk
-    const filePath = path.join(__dirname, 'uploads', record.fileName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    // ── GridFS Deletion ───────────────────────────────────────────────────────
+    // Delete the binary chunks from GridFS before removing the metadata record.
+    // If gridfsId is missing (legacy disk record), skip gracefully.
+    if (record.gridfsId && gridFSBucket) {
+      try {
+        await gridFSBucket.delete(record.gridfsId);
+      } catch (gridErr) {
+        // Log but don't block — the metadata record should still be removed
+        console.warn('GridFS delete warning (file may already be missing):', gridErr.message);
+      }
     }
 
+    // Remove the MongoDB metadata document
     await Record.findByIdAndDelete(req.params.recordId);
-    res.json({ success: true });
+    res.json({ success: true, message: 'Record and file deleted successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('Delete error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

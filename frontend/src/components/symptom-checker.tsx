@@ -10,7 +10,7 @@ import { getFamilyMembers, analyzeAndLogSymptom } from '@/app/actions/health'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff, Eye, FileText } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff, Eye, FileText, RotateCcw } from 'lucide-react'
 import { Link } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import jsPDF from 'jspdf';
@@ -38,8 +38,15 @@ const VITALS_FRESHNESS_LIMIT = 180; // 3 hours
 
 
 export function SymptomChecker() {
-    const [symptoms, setSymptoms] = useState("")
-    const { isListening, toggleListening, stopListening, isSupported } = useSpeechRecognition()
+    // --------------------------------------------------------------------------
+    // STATE MANAGEMENT & PERSISTENCE
+    // --------------------------------------------------------------------------
+    // We use sessionStorage to ensure the user doesn't lose their diagnostic 
+    // progress if they navigate to other tabs (like 'Find Care') and return.
+    const [symptoms, setSymptoms] = useState(() => sessionStorage.getItem('famplus_ai_symptoms') || "")
+    const { isListening, toggleListening, stopListening, isSupported, interimTranscript } = useSpeechRecognition()
+    
+    // Result object mapped exactly to the expected Python AI response schema.
     const [result, setResult] = useState<{ 
         condition: string; 
         confidence: number; 
@@ -52,10 +59,16 @@ export function SymptomChecker() {
         top_matches?: { condition: string; confidence: number }[];
         next_steps?: string[];
         vitals_analysis?: string[];
-    } | null>(null)
+    } | null>(() => {
+        const saved = sessionStorage.getItem('famplus_ai_result');
+        if (saved) {
+            try { return JSON.parse(saved); } catch(e) {}
+        }
+        return null;
+    })
     const [loading, setLoading] = useState(false)
     const [members, setMembers] = useState<any[]>([])
-    const [selectedMember, setSelectedMember] = useState("")
+    const [selectedMember, setSelectedMember] = useState(() => sessionStorage.getItem('famplus_ai_member') || "")
     const [vitalsStatus, setVitalsStatus] = useState<'fresh' | 'stale' | 'none'>('none')
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
@@ -67,6 +80,40 @@ export function SymptomChecker() {
         }
     }, [isPreviewOpen, previewUrl]);
 
+    // Sync session state whenever core dependencies change to prevent data loss.
+    React.useEffect(() => {
+        sessionStorage.setItem('famplus_ai_symptoms', symptoms);
+    }, [symptoms]);
+
+    React.useEffect(() => {
+        if (result) {
+            sessionStorage.setItem('famplus_ai_result', JSON.stringify(result));
+        } else {
+            sessionStorage.removeItem('famplus_ai_result');
+        }
+    }, [result]);
+
+    React.useEffect(() => {
+        sessionStorage.setItem('famplus_ai_member', selectedMember);
+    }, [selectedMember]);
+
+    /**
+     * Resets the entire diagnostic interface, clearing local state and purging
+     * the sessionStorage cache so the user can start a fresh analysis.
+     */
+    const handleReset = () => {
+        setSymptoms("");
+        setResult(null);
+        if (members.length > 0) {
+            setSelectedMember(members[0]._id || members[0].id);
+        } else {
+            setSelectedMember("");
+        }
+        sessionStorage.removeItem('famplus_ai_symptoms');
+        sessionStorage.removeItem('famplus_ai_result');
+        sessionStorage.removeItem('famplus_ai_member');
+    };
+
     React.useEffect(() => {
         const fetchMembers = async () => {
             try {
@@ -74,7 +121,9 @@ export function SymptomChecker() {
                 const data = await getFamilyMembers(userId)
                 if (Array.isArray(data)) {
                     setMembers(data)
-                    if (data.length > 0) setSelectedMember(data[0]._id || data[0].id)
+                    if (data.length > 0 && !sessionStorage.getItem('famplus_ai_member')) {
+                        setSelectedMember(data[0]._id || data[0].id)
+                    }
                 }
             } catch (e) {
                 console.error("Failed to load family members")
@@ -137,7 +186,14 @@ export function SymptomChecker() {
     }
 
     /**
-     * Generates a professional health report in PDF format.
+     * Generates a professional health report in PDF format using jsPDF.
+     * 
+     * Complexities Handled:
+     * 1. PDF font rendering corruption (sanitization of smart quotes/emojis).
+     * 2. Auto-pagination and careful yPos tracking to ensure content fits.
+     * 3. Dynamic vitals inclusion (only appended if fresh).
+     * 
+     * @returns {Object|null} The generated jsPDF instance and the parsed patient name.
      */
     const generatePDFDoc = () => {
         if (!result) return null;
@@ -190,13 +246,13 @@ export function SymptomChecker() {
         // Reset text color for body
         doc.setTextColor(0, 0, 0);
 
-        let yPos = 50;
+        let yPos = 46;
         
         // Patient Context
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text("Patient Information", 14, yPos);
-        yPos += 8;
+        yPos += 6;
         
         const patientName = selectedMemberData?.name || "Anonymous User";
         
@@ -212,14 +268,14 @@ export function SymptomChecker() {
         });
         
         // @ts-ignore
-        yPos = doc.lastAutoTable.finalY + 15;
+        yPos = doc.lastAutoTable.finalY + 10;
 
         // Vitals - Only include if data exists and is fresh (< 3 hours)
         if (selectedMemberData && vitalsStatus === 'fresh') {
             doc.setFontSize(14);
             doc.setFont('helvetica', 'bold');
             doc.text("Patient Vitals", 14, yPos);
-            yPos += 8;
+            yPos += 6;
 
             const vitalsBody = [];
             if (selectedMemberData.heartRate) vitalsBody.push(['Heart Rate', `${selectedMemberData.heartRate} bpm`]);
@@ -241,7 +297,7 @@ export function SymptomChecker() {
                     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } }
                 });
                 // @ts-ignore
-                yPos = doc.lastAutoTable.finalY + 15;
+                yPos = doc.lastAutoTable.finalY + 10;
             }
         }
 
@@ -249,7 +305,7 @@ export function SymptomChecker() {
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text("AI Assessment", 14, yPos);
-        yPos += 8;
+        yPos += 6;
         
         autoTable(doc, {
             startY: yPos,
@@ -265,19 +321,19 @@ export function SymptomChecker() {
         });
         
         // @ts-ignore
-        yPos = doc.lastAutoTable.finalY + 15;
+        yPos = doc.lastAutoTable.finalY + 10;
 
         // Advice
         doc.setFontSize(14);
         doc.setFont('helvetica', 'bold');
         doc.text("Clinical Guidance", 14, yPos);
-        yPos += 8;
+        yPos += 6;
         
         doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
         const splitAdvice = doc.splitTextToSize(processText(result.advice), 180);
         doc.text(splitAdvice, 14, yPos);
-        yPos += splitAdvice.length * 5 + 10;
+        yPos += splitAdvice.length * 5 + 6;
         
         // Precautions/Next Steps
         const listItems = (result.precautions && result.precautions.length > 0) ? result.precautions : result.next_steps;
@@ -285,25 +341,39 @@ export function SymptomChecker() {
             doc.setFontSize(12);
             doc.setFont('helvetica', 'bold');
             doc.text("Recommendations:", 14, yPos);
-            yPos += 8;
+            yPos += 6;
             
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
             listItems.forEach(item => {
                 const lines = doc.splitTextToSize(`• ${sanitizeText(item)}`, 180);
                 doc.text(lines, 14, yPos);
-                yPos += lines.length * 5 + 2;
+                yPos += lines.length * 5 + 1;
             });
         }
 
-        // WARNING FOOTER
+        // WARNING FOOTER — always on the same page, anchored near the bottom
         const pageHeight = doc.internal.pageSize.height;
         doc.setTextColor(220, 38, 38); // red-600
-        doc.setFontSize(8);
+        doc.setFontSize(7.5);
         doc.setFont('helvetica', 'bold');
-        const warningText = "WARNING: This report was generated by an Artificial Intelligence engine and is NOT a definitive medical diagnosis. It is intended for informational purposes only. Please present this document to a qualified medical professional for proper clinical evaluation and diagnosis.";
+        const warningText = "IMPORTANT DISCLAIMER: This AI-generated report is for informational purposes only and does not constitute a medical diagnosis. Please consult a qualified healthcare professional for clinical evaluation.";
         const splitWarning = doc.splitTextToSize(warningText, 180);
-        doc.text(splitWarning, 14, pageHeight - 15);
+        
+        // Determine warning position: anchor near bottom if possible, but stay at least 8 units below content
+        let warningY = yPos + 8;
+        
+        if (warningY < pageHeight - 12) {
+            warningY = pageHeight - 12; // anchor to bottom
+        } else if (warningY > pageHeight - 6) {
+            doc.addPage(); // only break page if it literally falls off the paper
+            warningY = pageHeight - 12;
+        }
+
+        doc.setDrawColor(220, 38, 38);
+        doc.setLineWidth(0.3);
+        doc.line(14, warningY - 4, 196, warningY - 4);
+        doc.text(splitWarning, 14, warningY);
         
         return { doc, patientName };
     };
@@ -331,16 +401,29 @@ export function SymptomChecker() {
             </div>
 
             <CardHeader className="pb-4 z-10 relative">
-                <CardTitle className="flex items-center gap-3 text-2xl font-bold">
-                    <div className="p-2 bg-primary/10 rounded-xl">
-                        <Sparkles className="h-6 w-6 text-primary" />
+                <CardTitle className="flex items-center justify-between text-2xl font-bold">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-xl">
+                            <Sparkles className="h-6 w-6 text-primary" />
+                        </div>
+                        AI Diagnostic System
                     </div>
-                    AI Diagnostic System
+                    {(result || symptoms) && (
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleReset}
+                            className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+                        >
+                            <RotateCcw className="h-4 w-4" />
+                            Reset
+                        </Button>
+                    )}
                 </CardTitle>
                 <CardDescription className="text-base mt-2 font-medium">
                     Analyze symptoms using our trained medical diagnostic model with grounding context.
                     <span className="block mt-2 text-[10px] uppercase tracking-tighter font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 dark:bg-orange-500/20 px-3 py-1 rounded-full w-fit">
-                        ⚠️ Consult a professional GP for definitive diagnosis
+                        ⚠️ Consult a professional General Physician for definitive diagnosis
                     </span>
                 </CardDescription>
             </CardHeader>
@@ -409,22 +492,29 @@ export function SymptomChecker() {
                             {/* WhatsApp-style Speech Recognition Overlay */}
                             {isListening && (
                                 <div className="absolute inset-0.5 bg-background/95 backdrop-blur-md rounded-2xl flex items-center justify-between px-6 animate-in fade-in slide-in-from-left-2 duration-300 z-10 border border-red-500/20">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center justify-center w-5 h-5 relative">
+                                    <div className="flex items-center gap-3 w-full max-w-[75%] overflow-hidden">
+                                        <div className="flex items-center justify-center w-5 h-5 relative shrink-0">
                                             <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
                                             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
                                         </div>
-                                        <span className="text-red-600 dark:text-red-400 text-sm font-semibold tracking-wide animate-pulse">
+                                        <span className="text-red-600 dark:text-red-400 text-sm font-semibold tracking-wide animate-pulse shrink-0">
                                             Listening...
                                         </span>
                                         
                                         {/* Bouncing Audio Wave Visual */}
-                                        <div className="flex items-end gap-1 h-5 px-2">
+                                        <div className="flex items-end gap-1 h-5 px-2 shrink-0">
                                             <div className="w-1 h-3 bg-red-500 rounded-full origin-bottom animate-wave-1" />
                                             <div className="w-1 h-5 bg-red-500 rounded-full origin-bottom animate-wave-2" />
                                             <div className="w-1 h-4 bg-red-500 rounded-full origin-bottom animate-wave-3" />
                                             <div className="w-1 h-2 bg-red-500 rounded-full origin-bottom animate-wave-4" />
                                         </div>
+
+                                        {/* Live Text Preview */}
+                                        {interimTranscript && (
+                                            <div className="ml-2 pl-3 border-l border-red-500/30 truncate text-sm font-medium text-foreground/80 flex-1">
+                                                {interimTranscript}
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <button

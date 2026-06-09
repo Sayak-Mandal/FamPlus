@@ -1,3 +1,10 @@
+/**
+ * @file Dashboard.tsx
+ * @description The primary landing page for authenticated users.
+ * Aggregates health metrics, vitals history, and family management controls
+ * into a single unified view. It heavily relies on the FamilyContext to
+ * switch perspectives between different family members dynamically.
+ */
 import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { HealthCheckDialog } from "@/components/health-check-dialog"
@@ -15,14 +22,16 @@ export default function DashboardPage() {
     const { familyMembers, isLoading, refresh, selectedMemberId, setSelectedMemberId } = useFamilyContext()
     const [vitalsHistory, setVitalsHistory] = useState<any[]>([])
 
-    // Fallback if selectedMemberId is null but members are loaded
+    // Determine the active member to display. Defaults to the selected member in context,
+    // falling back to the first available member in the circle.
     const primaryMember = (familyMembers.find(m => (m.id || m._id) === selectedMemberId) || familyMembers[0]) ?? null
 
-    // Re-fetch from context every time we navigate to this page
+    // Re-fetch context data automatically on navigation to ensure dashboard numbers are fresh.
     useEffect(() => {
         refresh()
     }, [location.pathname])
 
+    // Load historical vitals data for charts whenever the active member changes.
     useEffect(() => {
         if (!primaryMember) return
         const memberId = primaryMember.id || primaryMember._id

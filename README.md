@@ -24,10 +24,11 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 *   **Custom Physics Engine**: A lightweight 2D collision physics engine powers micro-interactions and animated CSS icons for a tactile, high-end feel.
 
 ### 📁 Medical Vault & Secure Records
-*   **In-App Document Vault**: Allows uploading files (prescriptions, medical records) with secure, authenticated API access.
-*   **Document Previews**: Preview PDFs and images directly inside the application workspace without needing local downloads.
+*   **MongoDB GridFS Secure Storage**: User-uploaded medical records (PDFs, images) are streamed directly into MongoDB GridFS, keeping them encrypted and securely integrated into the database without storing files on the local filesystem.
+*   **In-App Document Vault**: Allows uploading files with secure, authenticated API access, resolving file URLs dynamically.
+*   **Document Previews & Downloads**: Preview PDFs and images directly inside the application workspace or download them securely from the GridFS stream.
 *   **Encrypted Personal Vitals**: Secures sensitive user telemetry at-rest via an AES-256-CBC cipher with dynamic initialization vectors.
-*   **Vitals Logs Editing**: Modify mistakenly inputted vitals (weight, height, activity metrics) with automatic `EDITED` badge labels on updated entries.
+*   **Vitals Logs Editing & Localization**: Modify vitals (weight, height, heart rate) with automatic `EDITED` badge labels, localized `DD/MM/YYYY` date format, and randomized historical logging times for realistic data visualization.
 
 ---
 

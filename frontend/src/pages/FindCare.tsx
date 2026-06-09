@@ -103,7 +103,7 @@ function FindCareContent() {
     const [searchParams] = useSearchParams()
     const location = useLocation()
     const initialSymptoms = searchParams.get("symptoms") || ""
-    const { isListening, toggleListening, stopListening, isSupported } = useSpeechRecognition()
+    const { isListening, toggleListening, stopListening, isSupported, interimTranscript } = useSpeechRecognition()
 
     // aiResult is passed from SymptomChecker via router state — it already has the
     // correct specialist so we should use it directly, not re-call the AI.
@@ -292,22 +292,29 @@ function FindCareContent() {
                         {/* WhatsApp-style Speech Recognition Overlay */}
                         {isListening && (
                             <div className="absolute inset-0.5 bg-background/95 backdrop-blur-md rounded-xl flex items-center justify-between px-4 animate-in fade-in slide-in-from-left-2 duration-300 z-10 border border-red-500/20">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex items-center justify-center w-4 h-4 relative">
+                                <div className="flex items-center gap-2 w-full max-w-[70%] overflow-hidden">
+                                    <div className="flex items-center justify-center w-4 h-4 relative shrink-0">
                                         <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 animate-ping"></span>
                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
                                     </div>
-                                    <span className="text-red-600 dark:text-red-400 text-xs font-semibold tracking-wide animate-pulse">
+                                    <span className="text-red-600 dark:text-red-400 text-xs font-semibold tracking-wide animate-pulse shrink-0">
                                         Listening...
                                     </span>
                                     
                                     {/* Bouncing Audio Wave Visual */}
-                                    <div className="flex items-end gap-0.5 h-4 px-1">
+                                    <div className="flex items-end gap-0.5 h-4 px-1 shrink-0">
                                         <div className="w-0.75 h-2 bg-red-500 rounded-full origin-bottom animate-wave-1" />
                                         <div className="w-0.75 h-3.5 bg-red-500 rounded-full origin-bottom animate-wave-2" />
                                         <div className="w-0.75 h-3 bg-red-500 rounded-full origin-bottom animate-wave-3" />
                                         <div className="w-0.75 h-1.5 bg-red-500 rounded-full origin-bottom animate-wave-4" />
                                     </div>
+
+                                    {/* Live Text Preview */}
+                                    {interimTranscript && (
+                                        <div className="ml-1 pl-2 border-l border-red-500/30 truncate text-xs font-medium text-foreground/80 flex-1">
+                                            {interimTranscript}
+                                        </div>
+                                    )}
                                 </div>
                                 
                                 <button

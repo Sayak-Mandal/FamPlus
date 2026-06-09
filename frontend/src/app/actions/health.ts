@@ -1,3 +1,9 @@
+/**
+ * @file health.ts
+ * @description Frontend API Client Layer for Health & Family Operations.
+ * Wraps Axios calls to the Node.js backend. The backend manages authentication,
+ * IDOR protection, and proxies requests to the Python AI Engine.
+ */
 import axios from 'axios';
 
 const api = axios.create({
@@ -9,6 +15,11 @@ const getHeaders = () => {
     return { 'Authorization': `Bearer ${token}` };
 };
 
+/**
+ * Creates a new family member within the authenticated user's family circle.
+ * @param {Object} data - Form data including name, relation, age, etc.
+ * @returns Object indicating success status and the created member data.
+ */
 export async function createFamilyMember(data: any) {
     try {
         const response = await api.post(`/family`, data, { headers: getHeaders() });
@@ -27,6 +38,9 @@ export async function logVitals(familyMemberId: string, data: any) {
     }
 }
 
+/**
+ * Manually logs a new symptom to the database without triggering AI analysis.
+ */
 export async function logSymptom(familyMemberId: string, symptoms: string, analysis: string, severity: string) {
     try {
         await api.post(`/family/${familyMemberId}/symptoms`, { symptoms, analysis, severity }, { headers: getHeaders() });
@@ -36,6 +50,14 @@ export async function logSymptom(familyMemberId: string, symptoms: string, analy
     }
 }
 
+/**
+ * Triggers the Python AI pipeline via the Node.js proxy to analyze symptoms.
+ * The backend automatically injects the member's vitals context.
+ * 
+ * @param familyMemberId - The ID of the family member experiencing symptoms.
+ * @param symptoms - Natural language description of symptoms.
+ * @returns The structured AI diagnostic result.
+ */
 export async function analyzeAndLogSymptom(familyMemberId: string, symptoms: string) {
     try {
         const response = await api.post(`/family/${familyMemberId}/analyze-symptoms`, { symptoms }, { headers: getHeaders() });
@@ -54,6 +76,11 @@ export async function getVitalsHistory(familyMemberId: string) {
     }
 }
 
+/**
+ * Retrieves the authenticated user's family members and their latest vitals snapshot.
+ * The backend uses the JWT to determine the Family Circle automatically.
+ * @param userId - (Legacy) Retained for backward compatibility.
+ */
 export async function getFamilyMembers(userId?: string) {
     try {
         // We use the JWT for identity, userId parameter is now secondary
@@ -161,15 +188,29 @@ export async function deleteRecord(recordId: string) {
     }
 }
 
-export async function downloadRecordFile(fileUrl: string): Promise<Blob | null> {
+/**
+ * Downloads a medical record binary (PDF or image) from the backend via a
+ * secure, authenticated GridFS stream.
+ *
+ * The route `/uploads/:filename` is served at the root level (NOT under /api),
+ * so we build the URL against the backend host directly.
+ *
+ * @param fileUrlPath - Relative path such as `/uploads/<storedFilename>`
+ * @returns A Blob containing the file bytes, or null on failure.
+ */
+export async function downloadRecordFile(fileUrlPath: string): Promise<Blob | null> {
     try {
-        const response = await api.get(fileUrl, {
+        // Strip the /api prefix from the base URL to reach the root-level route
+        const backendRoot = (import.meta.env.VITE_API_URL || 'http://localhost:5001/api')
+            .replace(/\/api$/, '');
+
+        const response = await axios.get(`${backendRoot}${fileUrlPath}`, {
             headers: getHeaders(),
             responseType: 'blob'
         });
         return response.data;
     } catch (error) {
-        console.error("Failed to download record file", error);
+        console.error('Failed to download record file', error);
         return null;
     }
 }
