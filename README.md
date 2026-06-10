@@ -14,7 +14,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 ### 🧠 Advanced AI Ecosystem
 *   **SciSpacy NLP Pipeline**: Utilizes an automated biomedical entity extraction pipeline to better understand medical terminology and conversational symptom descriptions.
 *   **Vitals-Contextual Diagnostics**: The Gradient Boosting model correlates symptoms with real-time Age, Heart Rate, and Blood Pressure for improved diagnostic simulations.
-*   **Local Gemma3 LLM Integration**: Leverages local Large Language Model capabilities for contextual health advice and clinical reasoning simulations.
+*   **Groq Cloud LLM Integration**: Leverages Groq's high-speed cloud completion API (`llama-3.1-8b-instant`) for fast, contextual medical reasoning and advice simulations.
 *   **Professional PDF Reporting**: Generate, preview directly in the application, and download clinical-ready PDF diagnostic reports.
 
 ### 🎨 Premium Design & Glassmorphism UX
@@ -38,7 +38,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 | :--- | :--- |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, Three.js, Framer Motion, jspdf |
 | **Backend** | Node.js, Express, MongoDB (Mongoose), JWT Security, crypto (AES-256-CBC) |
-| **AI Engine** | Python 3.11, FastAPI, SciSpacy (en_core_sci_sm), Scikit-learn, Gemma3 |
+| **AI Engine** | Python 3.11, FastAPI, SciSpacy (en_core_sci_sm), Scikit-learn, Groq SDK |
 | **Mapping** | Google Maps Platform (Address-based routing), Leaflet |
 
 ---
@@ -47,8 +47,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 
 ### 1. Prerequisites
 - **Node.js** (v18+) & **Python** (v3.9+)
-- **Ollama**: Required for local LLM reasoning. [Download here](https://ollama.com).
-- **Gemma 2b/7b**: Pull the model via `ollama pull gemma:2b`.
+- **Groq API Key**: Required for high-speed cloud LLM reasoning (configured via `GROQ_API_KEY` in `.env`).
 - **SciSpacy Model**: Install via `pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_sm-0.5.4.tar.gz`.
 - **MongoDB** (Local or Atlas)
 - **Google Maps API Key** (for Find Care features)

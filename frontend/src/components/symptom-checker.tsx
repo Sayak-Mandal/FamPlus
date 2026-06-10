@@ -422,8 +422,8 @@ export function SymptomChecker() {
                 </CardTitle>
                 <CardDescription className="text-base mt-2 font-medium">
                     Analyze symptoms using our trained medical diagnostic model with grounding context.
-                    <span className="block mt-2 text-[10px] uppercase tracking-tighter font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 dark:bg-orange-500/20 px-3 py-1 rounded-full w-fit">
-                        ⚠️ Consult a professional General Physician for definitive diagnosis
+                    <span className="block mt-2 text-[10px] uppercase tracking-tighter font-bold text-red-600 dark:text-red-400 bg-red-500/10 dark:bg-red-500/20 px-3 py-1 rounded-full w-fit">
+                        Consult a professional General Physician for definitive diagnosis
                     </span>
                 </CardDescription>
             </CardHeader>
@@ -602,7 +602,7 @@ export function SymptomChecker() {
                                 result.urgency === 'Emergency'
                                     ? 'bg-red-500/10 border-red-500/50 shadow-red-500/20'
                                     : result.urgency === 'High'
-                                    ? 'bg-orange-500/10 border-orange-500/50 shadow-orange-500/10'
+                                    ? 'bg-red-500/10 border-red-500/50 shadow-red-500/10'
                                     : 'bg-primary/5 border-primary/20 shadow-primary/5'
                                 }`}>
                                 <div className="space-y-4">
@@ -612,7 +612,7 @@ export function SymptomChecker() {
                                                 <AlertTriangle className="h-5 w-5" />
                                             </div>
                                         ) : result.urgency === 'High' ? (
-                                            <div className="bg-orange-500 text-white p-1.5 rounded-lg shadow-lg shadow-orange-500/30">
+                                            <div className="bg-red-500 text-white p-1.5 rounded-lg shadow-lg shadow-red-500/30">
                                                 <AlertTriangle className="h-5 w-5" />
                                             </div>
                                         ) : (
@@ -622,7 +622,7 @@ export function SymptomChecker() {
                                         )}
                                         <p className={`text-xs font-black uppercase tracking-[0.2em] ${
                                             result.urgency === 'Emergency' ? 'text-red-500' :
-                                            result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                            result.urgency === 'High' ? 'text-red-500' : 'text-primary'
                                         }`}>
                                             {result.urgency === 'Emergency' ? 'CRITICAL MEDICAL ALERT' :
                                              result.urgency === 'High' ? 'IMMEDIATE ATTENTION REQUIRED' : 'STANDARD GUIDANCE'}
@@ -631,7 +631,7 @@ export function SymptomChecker() {
                                     
                                     <p className={`text-base leading-relaxed tracking-tight ${
                                         result.urgency === 'Emergency' ? 'font-bold text-red-950 dark:text-red-100' : 
-                                        result.urgency === 'High' ? 'font-semibold text-orange-950 dark:text-orange-100' : 'font-medium text-foreground/80'
+                                        result.urgency === 'High' ? 'font-semibold text-red-950 dark:text-red-100' : 'font-medium text-foreground/80'
                                     }`}>
                                         {result.advice}
                                     </p>
@@ -646,24 +646,24 @@ export function SymptomChecker() {
                                 {((result.precautions && result.precautions.length > 0) || (result.next_steps && result.next_steps.length > 0)) && (
                                     <div className={`space-y-3 p-5 rounded-3xl border ${
                                         result.urgency === 'Emergency' ? 'bg-red-500/5 border-red-500/30' :
-                                        result.urgency === 'High' ? 'bg-orange-500/5 border-orange-500/30' :
+                                        result.urgency === 'High' ? 'bg-red-500/5 border-red-500/30' :
                                         'bg-background/50 border-border/50'
                                     }`}>
                                         <div className="flex items-center gap-2 mb-1">
                                             {result.precautions && result.precautions.length > 0 ? (
                                                 <ShieldCheck className={`h-4 w-4 ${
                                                     result.urgency === 'Emergency' ? 'text-red-500' :
-                                                    result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                                    result.urgency === 'High' ? 'text-red-500' : 'text-primary'
                                                 }`} />
                                             ) : (
                                                 <ListChecks className={`h-4 w-4 ${
                                                     result.urgency === 'Emergency' ? 'text-red-500' :
-                                                    result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                                    result.urgency === 'High' ? 'text-red-500' : 'text-primary'
                                                 }`} />
                                             )}
                                             <p className={`text-[10px] font-black uppercase tracking-tighter ${
                                                 result.urgency === 'Emergency' ? 'text-red-500' :
-                                                result.urgency === 'High' ? 'text-orange-500' : 'text-primary'
+                                                result.urgency === 'High' ? 'text-red-500' : 'text-primary'
                                             }`}>
                                                 {result.precautions && result.precautions.length > 0 ? 
                                                     (result.urgency === 'Emergency' ? "EMERGENCY PRECAUTIONS" : "STANDARD PRECAUTIONS") : 
@@ -674,11 +674,11 @@ export function SymptomChecker() {
                                             {(result.precautions && result.precautions.length > 0 ? result.precautions : result.next_steps)?.map((item, i) => (
                                                 <li key={i} className={`text-sm font-bold flex items-center gap-2 ${
                                                     result.urgency === 'Emergency' ? 'text-red-900 dark:text-red-200' :
-                                                    result.urgency === 'High' ? 'text-orange-900 dark:text-orange-200' : 'text-foreground'
+                                                    result.urgency === 'High' ? 'text-red-900 dark:text-red-200' : 'text-foreground'
                                                 }`}>
                                                     <div className={`h-1.5 w-1.5 rounded-full ${
                                                         result.urgency === 'Emergency' ? 'bg-red-500' :
-                                                        result.urgency === 'High' ? 'bg-orange-500' : 'bg-primary/40'
+                                                        result.urgency === 'High' ? 'bg-red-500' : 'bg-primary/40'
                                                     }`} />
                                                     {item}
                                                 </li>

@@ -37,6 +37,11 @@ import re
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import time
+import json
+import groq
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 
 # ==============================================================================
 # SECTION 1: GLOBAL CONFIGURATION & ASSET REGISTRY
@@ -113,17 +118,14 @@ if os.path.exists(MODEL_PATH) and os.path.exists(METADATA_PATH):
 else:
     print("⚠️  ML Model not found. Please run generate_synthetic_data.py then train_model.py first.")
 
-# ── Ollama LLM Configuration ──────────────────────────────────────────────────
-# Ollama provides a local LLM (gemma3:4b) for superior clinical reasoning.
+# ── Groq LLM Configuration ──────────────────────────────────────────────────
+# Groq provides a cloud LLM API for superior clinical reasoning.
 # The existing Gradient Boosting model serves as an automatic fallback when
-# Ollama is unavailable.
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:4b")
-OLLAMA_TIMEOUT = 18  # Maximum seconds to wait for LLM response
-OLLAMA_CHECK_INTERVAL = 60  # Seconds between availability checks
-
-_ollama_available: Optional[bool] = None
-_ollama_last_check: float = 0
+# Groq is unavailable.
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+groq_client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_TIMEOUT = 18  # Maximum seconds to wait for LLM response
 
 
 
@@ -292,7 +294,7 @@ EMERGENCY_OVERRIDES: Dict[str, dict] = {
         'min_total':      1,   # Immediate red flag if definitive
         'override_confidence': 95,
         'specialist': 'Emergency Physician / Toxicology',
-        'advice': "⚠️ EMERGENCY: You have reported ingesting a potentially toxic substance or foreign object. Please call emergency services or a poison control center immediately.",
+        'advice': "EMERGENCY: You have reported ingesting a potentially toxic substance or foreign object. Please call emergency services or a poison control center immediately.",
     },
 }
 
@@ -338,7 +340,7 @@ def check_emergency_override(valid_features: List[str]) -> Optional[dict]:
 
     if best_match:
         print(
-            f"🚨 EMERGENCY OVERRIDE: {best_match['disease']} "
+            f"EMERGENCY OVERRIDE: {best_match['disease']} "
             f"(definitive={best_match['n_definitive']}, total={best_match['n_total']}, "
             f"markers={best_match['matched_markers']})"
         )
@@ -474,22 +476,22 @@ class SymptomResponse(BaseModel):
     )
 
 
-class OllamaTopMatch(BaseModel):
-    """A single differential diagnosis from the LLM."""
-    condition:  str
-    confidence: int
+class GroqMinifiedTopMatch(BaseModel):
+    """A single differential diagnosis from the LLM (Minified)."""
+    c:  str
+    f:  int
 
-class OllamaDiagnosis(BaseModel):
-    """Structured schema for Ollama's clinical reasoning output."""
-    condition:    str
-    confidence:   int
-    advice:       str
-    specialist:   str
-    description:  str
-    precautions:  List[str]
-    urgency:      str
-    top_matches:  List[OllamaTopMatch]
-    next_steps:   List[str]
+class GroqMinifiedDiagnosis(BaseModel):
+    """Structured minified schema for Groq's clinical reasoning output."""
+    c:    str
+    f:    int
+    u:    str
+    a:    str
+    s:    str
+    d:    str
+    p:    List[str]
+    t:    List[GroqMinifiedTopMatch]
+    n:    List[str]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1663,110 +1665,49 @@ def get_fallback_response(reason: str) -> SymptomResponse:
 #  Ollama LLM Clinical Reasoning Engine
 # ══════════════════════════════════════════════════════════════════════════════
 
-MEDICAL_SYSTEM_PROMPT = """You are a clinical decision support assistant for the Famplus health application.
-Your role is to analyze patient-reported symptoms and provide preliminary health guidance.
-
-CRITICAL SAFETY RULES:
-1. You are NOT a doctor. Always recommend consulting a qualified physician.
-2. For ANY life-threatening symptoms, set urgency to "Emergency" and confidence to 85+.
-3. Be conservative — when uncertain, recommend a General Physician.
-4. NEVER dismiss chest pain, breathing difficulties, or neurological symptoms.
-5. Consider the patient's vitals (if provided) when making your assessment.
-6. GENERATE CONCISE RESPONSES: Keep descriptions, advice, and next steps to 1 short sentence max to ensure fast API responses.
-
-EMERGENCY RED FLAGS (ALWAYS flag as "Emergency" urgency):
-- Heavy/crushing chest pain → Cardiac Emergency → Cardiologist
-- Chest pain + arm pain/jaw pain/cold sweat → Heart Attack → Cardiologist
-- One-sided weakness + slurred speech → Stroke → Neurologist
-- High fever + red spots + pain behind eyes → Dengue → Infectious Disease Specialist
-- Coughing blood + persistent cough → TB/Pneumonia → Pulmonologist
-- Severe breathing difficulty → Respiratory Emergency → Pulmonologist
-
-COMMON SYMPTOM PATTERNS:
-- Headache + blocked/runny nose + sneezing → Common Cold → General Physician
-- Headache + blocked nose + facial pain → Sinusitis → ENT Specialist
-- Fever + body ache + fatigue → Common Flu → General Physician
-- Stomach pain + nausea + diarrhea → Gastroenteritis → Gastroenterologist
-- Itching + skin rash → Allergy or Fungal Infection → Dermatologist/Allergist
-- Joint pain + stiffness → Arthritis → Rheumatologist
-- Burning urination + frequent urination → UTI → Urologist
-- Heartburn + acidity + chest burning → GERD → Gastroenterologist
-
-SPECIALIST NAMES (use ONLY these exact specialist names in the "specialist" field):
-- Cardiologist (for heart/cardiac issues)
-- Neurologist (for brain/neurological issues)
-- Pulmonologist (for lung/breathing issues)
-- Gastroenterologist (for stomach/digestive issues)
-- Dermatologist (for skin issues)
-- Rheumatologist (for joint/bone issues)
-- Endocrinologist (for thyroid/hormone/diabetes issues)
-- Infectious Disease Specialist (for infections/fever)
-- ENT Specialist (for ear/nose/throat issues)
-- Urologist (for urinary issues)
-- Hepatologist (for liver issues)
-- Allergist (for allergy issues)
-- Sleep Specialist (for sleep issues)
-- Vascular Surgeon (for vascular issues)
-- General Physician (for general/unclear issues)
-
-CONFIDENCE GUIDELINES:
-- 80-100%: Strong symptom-disease match with multiple correlated symptoms
-- 50-79%: Moderate match, symptoms are suggestive but not definitive
-- 20-49%: Weak match, limited symptoms provided
-- Below 20%: Very uncertain, default to General Physician
-
-URGENCY LEVELS:
-- "Emergency": Life-threatening, seek immediate care
-- "High": Significant concern, see doctor within 24 hours
-- "Normal": Monitor and schedule routine appointment
-
-Provide 3 differential diagnoses in top_matches (most likely first).
-Always include 3-4 practical precautions and next steps.
-Respond ONLY with valid JSON matching the required schema."""
+MEDICAL_SYSTEM_PROMPT = """You are a clinical decision support assistant.
+Analyze patient symptoms and vitals. Follow safety rules.
+SAFETY RULES:
+- Recommend consulting a physician.
+- Set urgency to "Emergency" for life-threatening symptoms.
+- Be conservative. Default to General Physician if unsure.
+- Specialists: Cardiologist, Neurologist, Pulmonologist, Gastroenterologist, Dermatologist, Rheumatologist, Endocrinologist, Infectious Disease Specialist, ENT Specialist, Urologist, Hepatologist, Allergist, Sleep Specialist, Vascular Surgeon, General Physician.
+- Urgencies: Emergency, High, Normal.
+- Keep text fields (advice, next_steps) to 1 short sentence max.
+Respond ONLY in the specified minified JSON format."""
 
 
-def is_ollama_available() -> bool:
-    """Checks if Ollama is running and the configured model is pulled.
+def find_local_disease_match(condition: str) -> Optional[str]:
+    """Finds the closest matching disease in local metadata, if any."""
+    if not metadata or 'description_map' not in metadata:
+        return None
+    c_norm = "".join(ch for ch in condition.lower() if ch.isalnum())
+    known = list(metadata['description_map'].keys())
+    # Exact check
+    for d in known:
+        d_norm = "".join(ch for ch in d.lower() if ch.isalnum())
+        if c_norm == d_norm:
+            return d
+    # Substring check
+    for d in known:
+        d_norm = "".join(ch for ch in d.lower() if ch.isalnum())
+        if d_norm in c_norm or c_norm in d_norm:
+            return d
+    return None
 
-    Results are cached for OLLAMA_CHECK_INTERVAL seconds to avoid
-    hammering the Ollama API on every request.
-    """
-    global _ollama_available, _ollama_last_check
-
-    now = time.time()
-    if _ollama_available is not None and (now - _ollama_last_check) < OLLAMA_CHECK_INTERVAL:
-        return _ollama_available
-
-    try:
-        with httpx.Client(timeout=5) as client:
-            resp = client.get(f"{OLLAMA_BASE_URL}/api/tags")
-            if resp.status_code == 200:
-                models = resp.json().get("models", [])
-                model_names = [m.get("name", "") for m in models]
-                available = any(OLLAMA_MODEL in name for name in model_names)
-                _ollama_available = available
-                _ollama_last_check = now
-                if available:
-                    print(f"✅ Ollama available with model '{OLLAMA_MODEL}'")
-                else:
-                    print(f"⚠️  Ollama running but '{OLLAMA_MODEL}' not found. Have: {model_names}")
-                return available
-    except Exception as e:
-        print(f"⚠️  Ollama not reachable: {e}")
-
-    _ollama_available = False
-    _ollama_last_check = now
-    return False
+def is_groq_available() -> bool:
+    """Checks if Groq is available and configured."""
+    return groq_client is not None
 
 
-def predict_with_ollama(
+def predict_with_groq(
     symptoms_text: str,
     vitals: Optional[VitalsContext] = None,
 ) -> Optional[SymptomResponse]:
-    """Calls the local Ollama LLM for clinical reasoning on symptoms.
+    """Calls the Groq LLM for clinical reasoning on symptoms.
 
     Constructs a detailed prompt with symptom text and vitals context,
-    then forces structured JSON output via Ollama's format parameter.
+    then forces structured JSON output.
 
     Args:
         symptoms_text: Raw user input (e.g., "heavy chest pain and dizziness").
@@ -1775,6 +1716,9 @@ def predict_with_ollama(
     Returns:
         A SymptomResponse if the LLM succeeds, or None to trigger ML fallback.
     """
+    if not groq_client:
+        return None
+
     try:
         # ── Build user prompt with vitals context ─────────────────────────
         user_msg = f"Patient reports: \"{symptoms_text}\""
@@ -1792,47 +1736,53 @@ def predict_with_ollama(
             if parts:
                 user_msg += "\n\nPatient Vitals:\n" + "\n".join(f"- {p}" for p in parts)
 
+        json_template = {
+            "c": "Condition",
+            "f": 90,
+            "u": "Emergency",
+            "a": "Advice",
+            "s": "Specialist",
+            "d": "Description",
+            "p": ["Precaution"],
+            "t": [{"c": "Diff Diagnosis", "f": 90}],
+            "n": ["Next Step"]
+        }
         user_msg += (
-            "\n\nAnalyze these symptoms carefully. Consider the most clinically "
-            "likely condition, provide your confidence level, the recommended "
-            "specialist, practical precautions, and next steps for the patient."
+            "\nRespond ONLY as a JSON object matching this schema:\n"
+            + json.dumps(json_template)
         )
 
-        print(f"🤖 Ollama request: model={OLLAMA_MODEL}, symptoms='{symptoms_text}'")
+        print(f"🤖 Groq request: model={GROQ_MODEL}, symptoms='{symptoms_text}'")
 
-        # ── Call Ollama with structured JSON output ──────────────────────
-        with httpx.Client(timeout=OLLAMA_TIMEOUT) as client:
-            resp = client.post(
-                f"{OLLAMA_BASE_URL}/api/chat",
-                json={
-                    "model": OLLAMA_MODEL,
-                    "messages": [
-                        {"role": "system", "content": MEDICAL_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    "format": OllamaDiagnosis.model_json_schema(),
-                    "stream": False,
-                    "keep_alive": -1,
-                    "options": {
-                        "temperature": 0,
-                        "num_ctx": 1024,
-                        "num_predict": 512,
-                    },
-                },
-            )
+        # ── Call Groq with structured JSON output ──────────────────────
+        resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": MEDICAL_SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=500,
+            timeout=GROQ_TIMEOUT,
+        )
 
-        if resp.status_code != 200:
-            print(f"⚠️  Ollama HTTP {resp.status_code}")
-            return None
-
-        content = resp.json().get("message", {}).get("content", "")
+        content = resp.choices[0].message.content
         if not content:
-            print("⚠️  Ollama returned empty content")
+            print("⚠️  Groq returned empty content")
             return None
 
         # ── Parse structured response ────────────────────────────────────
-        diagnosis = OllamaDiagnosis.model_validate_json(content)
-        confidence = max(0, min(100, diagnosis.confidence))
+        diagnosis = GroqMinifiedDiagnosis.model_validate_json(content)
+        confidence = max(0, min(100, diagnosis.f))
+        
+        # Local enrichment lookup
+        matched_disease = find_local_disease_match(diagnosis.c)
+        if matched_disease:
+            final_desc = metadata['description_map'].get(matched_disease, diagnosis.d)
+            final_precautions = [p.capitalize() for p in metadata.get('precaution_map', {}).get(matched_disease, diagnosis.p)]
+        else:
+            final_desc = diagnosis.d
+            final_precautions = diagnosis.p
 
         # Normalize specialist name (LLM sometimes outputs category labels, lowercase, or
         # hallucinated values not in the allowed set)
@@ -1882,7 +1832,7 @@ def predict_with_ollama(
             "emergency medicine":           "Cardiologist",
             "emergency doctor":             "Cardiologist",
         }
-        raw_specialist = diagnosis.specialist.strip()
+        raw_specialist = diagnosis.s.strip()
         specialist = SPECIALIST_NORMALIZE.get(raw_specialist.lower(), raw_specialist)
 
         # Final guard: if LLM returned something completely unknown, fall back to GP
@@ -1895,7 +1845,7 @@ def predict_with_ollama(
             "Pediatrician", "Orthopedic",
         }
         if specialist not in VALID_SPECIALISTS:
-            print(f"⚠️  Ollama returned unknown specialist '{specialist}' → defaulting to General Physician")
+            print(f"⚠️  Groq returned unknown specialist '{specialist}' → defaulting to General Physician")
             specialist = "General Physician"
 
         # Build vitals analysis annotations
@@ -1916,30 +1866,27 @@ def predict_with_ollama(
 
         # Map to TopMatch objects
         top_matches = [
-            TopMatch(condition=tm.condition, confidence=max(0, min(100, tm.confidence)))
-            for tm in diagnosis.top_matches[:3]
+            TopMatch(condition=tm.c, confidence=max(0, min(100, tm.f)))
+            for tm in diagnosis.t[:3]
         ]
 
-        print(f"🤖 Ollama result: {diagnosis.condition} ({confidence}%) → {specialist}")
+        print(f"🤖 Groq result: {diagnosis.c} ({confidence}%) → {specialist}")
 
         return SymptomResponse(
-            condition       = diagnosis.condition,
+            condition       = diagnosis.c,
             confidence      = confidence,
-            advice          = diagnosis.advice,
+            advice          = diagnosis.a,
             specialist      = specialist,
-            description     = diagnosis.description or "No description available.",
-            precautions     = diagnosis.precautions[:4],
-            urgency         = diagnosis.urgency if diagnosis.urgency in ("Normal", "High", "Emergency") else "Normal",
+            description     = final_desc or "No description available.",
+            precautions     = final_precautions[:4],
+            urgency         = diagnosis.u if diagnosis.u in ("Normal", "High", "Emergency") else "Normal",
             top_matches     = top_matches,
-            next_steps      = diagnosis.next_steps[:4],
+            next_steps      = diagnosis.n[:4],
             vitals_analysis = vitals_analysis,
         )
 
-    except httpx.TimeoutException:
-        print("⚠️  Ollama timed out — falling back to ML model")
-        return None
     except Exception as e:
-        print(f"⚠️  Ollama error: {e} — falling back to ML model")
+        print(f"⚠️  Groq error: {e} — falling back to ML model")
         return None
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2209,7 +2156,7 @@ async def predict_symptoms(request: SymptomRequest):
         markers_str = " and ".join(formatted_markers) if len(formatted_markers) == 2 else ", ".join(formatted_markers)
 
         advice = (
-            f"⚠️ URGENT: Your symptoms strongly indicate a potential medical emergency. "
+            f"URGENT: Your symptoms strongly indicate a potential medical emergency. "
             f"The presence of {markers_str} is a significant clinical indicator for {override_disease}. "
             f"Please proceed to an emergency department or consult a {specialist} immediately. "
             f"Do not delay in seeking professional medical evaluation."
@@ -2235,7 +2182,7 @@ async def predict_symptoms(request: SymptomRequest):
             urgency         = "Emergency",
             top_matches     = override_top_matches,
             next_steps      = [
-                "🚨 Seek emergency medical attention immediately",
+                "Seek emergency medical attention immediately",
                 "Call emergency services or go to the nearest hospital",
                 "Do not drive yourself — have someone take you",
                 "Note symptom onset time for the treating physician",
@@ -2315,7 +2262,7 @@ async def predict_symptoms(request: SymptomRequest):
     urgency = "High" if severity_score > 15 or is_scary_with_high_conf else "Normal"
 
     if urgency == "High":
-        advice    += " ⚠️ Your symptoms appear clinically significant — please seek care promptly."
+        advice    += " Your symptoms appear clinically significant — please seek care promptly."
         next_steps = [
             "Seek medical attention soon",
             "Avoid strenuous activity",
@@ -2352,15 +2299,15 @@ async def predict_symptoms(request: SymptomRequest):
         print(f"⚡ Fast-First Strategy: Returning ML result (Confidence: {final_confidence}%, Urgency: {urgency})")
         return ml_response
 
-    # ── Ollama LLM Reasoning Path ─────────────────────────────────────────────
+    # ── Groq LLM Reasoning Path ─────────────────────────────────────────────
     # For ambiguous or lower confidence cases, invoke the LLM for deep reasoning.
 
-    if is_ollama_available():
-        print("🧠 Invoking Ollama for deep reasoning on complex case...")
-        ollama_result = predict_with_ollama(data.symptoms, data.vitals_context)
-        if ollama_result is not None:
-            return ollama_result
-        print("⚠️  Ollama returned None, falling back to local ML model")
+    if is_groq_available():
+        print("🧠 Invoking Groq for deep reasoning on complex case...")
+        groq_result = predict_with_groq(data.symptoms, data.vitals_context)
+        if groq_result is not None:
+            return groq_result
+        print("⚠️  Groq returned None, falling back to local ML model")
 
     return ml_response
 

@@ -126,10 +126,10 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Strict Rate Limiting for Authentication Routes (10 requests per 15 minutes)
+// Strict Rate Limiting for Authentication Routes (Increased for testing)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: 1000,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many login or registration attempts. Please try again after 15 minutes.' }

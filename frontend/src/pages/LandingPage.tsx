@@ -123,14 +123,14 @@ export default function LandingPage() {
             <div className="flex-1 space-y-12">
               <div className="space-y-4">
                 <h2 className="text-4xl md:text-5xl font-black text-slate-900 tracking-tight leading-tight">The Guardian Technology</h2>
-                <p className="text-slate-500 max-w-xl text-lg leading-relaxed">We combine an advanced local LLM clinical reasoning engine with intuitive, privacy-first family management.</p>
+                <p className="text-slate-500 max-w-xl text-lg leading-relaxed">We combine an advanced LLM clinical reasoning engine with intuitive, privacy-first family management.</p>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-6">
                 <FeatureCard 
                   icon={<Sparkles className="w-6 h-6 text-white" />}
-                  title="Local AI Reasoning"
-                  desc="Powered by Gemma 3 and SciSpacy NLP, processing complex medical contexts locally."
+                  title="Cloud AI Reasoning"
+                  desc="Powered by LLaMA and SciSpacy NLP, processing complex medical contexts instantly."
                   highlight={true}
                 />
                 <FeatureCard 
