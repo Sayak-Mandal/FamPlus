@@ -1,10 +1,12 @@
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle, CheckCircle, Activity, Loader2, MapPin } from "lucide-react"
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils"
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 interface WellnessScoreProps {
     vitalsHistory: any[]
@@ -18,32 +20,24 @@ export function WellnessScore({ vitalsHistory, currentMember }: WellnessScorePro
 
     useEffect(() => {
         const controller = new AbortController()
-        
+
         const fetchWellness = async () => {
+            // Need a member ID to call the backend proxy
+            if (!currentMember?._id && !currentMember?.id) {
+                setLoading(false)
+                return
+            }
+            const memberId = currentMember._id || currentMember.id
+
             try {
                 setLoading(true)
-                // Determine the data payload
-                let payload = vitalsHistory.map(log => ({
-                    bloodPressure: "120/80",
-                    heartRate: log.heartRate,
-                    steps: 0,
-                    sleep: "7h"
-                }))
-
-                if (currentMember) {
-                    const liveEntry = {
-                        bloodPressure: "120/80",
-                        heartRate: currentMember.heartRate || 70,
-                        steps: currentMember.steps || 0,
-                        sleep: currentMember.sleep || "7h"
-                    }
-                    payload = [...payload, liveEntry]
-                }
-
-                const res = await fetch("http://localhost:8000/predict_wellness", {
+                const token = localStorage.getItem('token')
+                const res = await fetch(`${API_BASE}/family/${memberId}/wellness`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ vitals_history: payload }),
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
                     signal: controller.signal
                 })
 
@@ -63,9 +57,9 @@ export function WellnessScore({ vitalsHistory, currentMember }: WellnessScorePro
         }
 
         fetchWellness()
-        
+
         return () => controller.abort()
-    }, [vitalsHistory.length, currentMember?.id, currentMember?.heartRate, currentMember?.steps, currentMember?.sleep])
+    }, [vitalsHistory.length, currentMember?._id, currentMember?.id, currentMember?.heartRate, currentMember?.steps, currentMember?.sleep])
 
     if (loading) return <div className="p-4"><Loader2 className="animate-spin" /></div>
     if (error) return null // Hide if AI is down (fail gracefully)

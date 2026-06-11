@@ -2,10 +2,12 @@
  * @file ai-model.ts
  * @description Frontend service layer for the Famplus AI Diagnostic Engine.
  *
- * Communicates with the FastAPI backend at localhost:8000 to send symptom
- * descriptions (and optionally, real-time vitals context from the dashboard)
- * for ML-based diagnostic prediction.
+ * Communicates through the Node.js backend proxy which securely forwards
+ * requests to the Python AI engine. This avoids CORS issues and ensures
+ * the API key / AI engine URL is never exposed to the browser.
  */
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 /**
  * Optional vitals context from the user's dashboard.
@@ -24,28 +26,27 @@ export interface VitalsContext {
 }
 
 /**
- * Sends a symptom description (and optional vitals context) to the AI
- * diagnostic engine and returns the prediction result.
+ * Sends a symptom description to the AI diagnostic engine via the backend
+ * proxy and returns the prediction result.
+ *
+ * NOTE: This function calls /api/doctors/analyze (not the AI engine directly),
+ * so it requires the user to be authenticated. Make sure the JWT token is
+ * stored in localStorage under the key 'token'.
  *
  * @param symptoms       - Natural language symptom description
- * @param vitalsContext   - Optional dashboard vitals for context-aware diagnosis
+ * @param vitalsContext  - Optional dashboard vitals for context-aware diagnosis (unused here, handled server-side)
  * @returns Prediction object with condition, confidence, advice, specialist, etc.
  */
 export async function predictCondition(symptoms: string, vitalsContext?: VitalsContext) {
     try {
-        const body: Record<string, unknown> = { symptoms };
-
-        // Only include vitals_context if provided and non-empty
-        if (vitalsContext) {
-            body.vitals_context = vitalsContext;
-        }
-
-        const response = await fetch("http://localhost:8000/predict_symptoms", {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE}/doctors/analyze`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`
             },
-            body: JSON.stringify(body),
+            body: JSON.stringify({ symptoms }),
         });
 
         if (!response.ok) {
