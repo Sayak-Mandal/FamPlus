@@ -29,6 +29,21 @@ export function WellnessScore({ vitalsHistory, currentMember }: WellnessScorePro
             }
             const memberId = currentMember._id || currentMember.id
 
+            // Build a cache key based on data that would change the wellness score.
+            // If the key matches what's in sessionStorage, use the cached result
+            // instead of making a new API call.
+            const cacheKey = `wellness:${memberId}:${vitalsHistory.length}:${currentMember?.heartRate}:${currentMember?.steps}:${currentMember?.sleep}`
+            const cached = sessionStorage.getItem(cacheKey)
+            if (cached) {
+                try {
+                    setPrediction(JSON.parse(cached))
+                    setLoading(false)
+                    return
+                } catch {
+                    sessionStorage.removeItem(cacheKey)
+                }
+            }
+
             try {
                 setLoading(true)
                 const token = localStorage.getItem('token')
@@ -44,6 +59,8 @@ export function WellnessScore({ vitalsHistory, currentMember }: WellnessScorePro
                 if (!res.ok) throw new Error("AI Service Failed")
 
                 const data = await res.json()
+                // Persist to sessionStorage (cleared on tab close / logout)
+                sessionStorage.setItem(cacheKey, JSON.stringify(data))
                 setPrediction(data)
                 setError(false)
             } catch (e: any) {

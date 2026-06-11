@@ -37,7 +37,7 @@ export default function DashboardLayout() {
                 <div className="flex-1 relative flex overflow-hidden">
                     {/* Desktop Sidebar */}
                     <div className={cn(
-                        "hidden md:flex md:flex-col border-r transition-all duration-300 bg-card overflow-y-auto z-[80]",
+                        "hidden md:flex md:flex-col border-r transition-all duration-300 bg-card overflow-hidden z-[80]",
                         isCollapsed ? "md:w-20" : "md:w-72"
                     )}>
                         <Sidebar isCollapsed={isCollapsed} />
