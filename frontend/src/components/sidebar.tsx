@@ -53,35 +53,7 @@ export function Sidebar({ onClose, isCollapsed, onToggle }: { onClose?: () => vo
             isCollapsed ? "w-20" : "w-72"
         )}>
             <div className="px-3 py-2 flex-1">
-                <div className={cn(
-                    "flex items-center pl-3 mb-10 transition-all",
-                    isCollapsed ? "justify-center pl-0" : "justify-between"
-                )}>
-                    <div className={cn(
-                        "flex items-center gap-2",
-                        isCollapsed && "flex-col"
-                    )}>
-                        <button 
-                            onClick={onToggle} 
-                            className="p-2 hover:bg-accent rounded-xl transition-all active:scale-95 group"
-                            title={isCollapsed ? "Expand" : "Collapse"}
-                        >
-                            <Menu className={cn(
-                                "h-6 w-6 text-muted-foreground group-hover:text-primary transition-colors",
-                                !isCollapsed && "h-6 w-6"
-                            )} />
-                        </button>
-                        {!isCollapsed && (
-                            <span className="font-bold text-muted-foreground uppercase tracking-widest text-[10px]">Menu</span>
-                        )}
-                    </div>
-                    {onClose && (
-                        <button onClick={onClose} className="md:hidden p-2 hover:bg-accent rounded-full transition">
-                            <X className="h-5 w-5 text-muted-foreground" />
-                        </button>
-                    )}
-                </div>
-                <div className="space-y-1">
+                <div className="space-y-1 mt-2">
                     {routes.map((route) => (
                         <Link
                             key={route.href}

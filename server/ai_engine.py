@@ -571,6 +571,9 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'sweating':               'sweating',
     'sweaty':                 'sweating',
     'night sweats':           'sweating',
+    'cold':                   'chills',
+    'common cold':            'continuous_sneezing',
+    'feeling cold':           'chills',
     'cold hands':             'cold_hands_and_feets',
     'cold feet':              'cold_hands_and_feets',
     'cold hands and feet':    'cold_hands_and_feets',
@@ -1256,8 +1259,8 @@ def normalize_input(text: str, known_symptoms: List[str]) -> List[int]:
     Returns:
         A list of binary integers (0 or 1) representing present symptoms.
     """
-    # ── 0. Clean: lowercase, remove punctuation, collapse whitespace ──────────
-    cleaned = re.sub(r"[^\w\s]", " ", text.lower())
+    # ── 0. Clean: lowercase, remove punctuation except commas/semicolons ──────
+    cleaned = re.sub(r"[^\w\s,;]", " ", text.lower())
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     found: list[str] = []

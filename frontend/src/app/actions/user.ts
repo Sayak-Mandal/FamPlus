@@ -34,6 +34,23 @@ export async function login(formData: FormData) {
     }
 }
 
+/**
+ * Exchanges a Google ID token (from Google Identity Services) for a Famplus JWT.
+ * The backend verifies the token with Google and finds or creates the user.
+ */
+export async function googleAuthLogin(credential: string) {
+    try {
+        const res = await api.post('/auth/google', { credential });
+        const user = res.data;
+        localStorage.setItem('userId', user.id);
+        localStorage.setItem('token', user.token);
+        return user;
+    } catch (error: any) {
+        const message = error.response?.data?.error || "Google login failed";
+        throw new Error(message);
+    }
+}
+
 export async function register(name: string, email: string, password: string) {
     try {
         const res = await api.post('/auth/register', { name, email, password });

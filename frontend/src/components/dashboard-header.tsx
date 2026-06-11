@@ -1,4 +1,3 @@
-
 import { useState } from "react"
 import {
     DropdownMenu,
@@ -10,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { LayoutDashboard, Settings, LogOut, User, Bell, Menu, PlusCircle, Trash2, Activity } from "lucide-react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "@/components/sidebar"
 import { Button } from "@/components/ui/button"
@@ -22,9 +21,11 @@ interface DashboardHeaderProps {
         name: string | null;
         email: string | null;
     } | null;
+    isCollapsed?: boolean;
+    onToggle?: () => void;
 }
 
-export function DashboardHeader({ user }: DashboardHeaderProps) {
+export function DashboardHeader({ user, isCollapsed, onToggle }: DashboardHeaderProps) {
     const navigate = useNavigate()
     const { familyMembers, selectedMemberId } = useFamilyContext()
 
@@ -47,27 +48,48 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
 
     return (
-        <header className="h-16 border-b bg-white flex items-center justify-between px-4 md:px-8">
-            <div className="flex items-center gap-4">
+        <header className="h-16 flex items-center justify-between pl-4 pr-4 md:pl-5 md:pr-6">
+            <div className="flex items-center gap-2 md:gap-4">
+                {/* Desktop Sidebar Toggle */}
+                {onToggle && (
+                    <button 
+                        onClick={onToggle} 
+                        className="p-2 hover:bg-accent rounded-full transition-all active:scale-95 hidden md:block"
+                        title={isCollapsed ? "Expand" : "Collapse"}
+                    >
+                        <Menu className="h-6 w-6 text-muted-foreground hover:text-primary transition-colors" />
+                    </button>
+                )}
+
+                {/* Mobile Sidebar Toggle & Sheet */}
                 <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
                     <SheetTrigger asChild>
                         <Button variant="ghost" size="icon" className="md:hidden h-11 w-11">
                             <Menu className="h-6 w-6" />
                         </Button>
                     </SheetTrigger>
-                    <SheetContent side="left" className="p-0 bg-white w-72">
+                    <SheetContent side="left" className="p-0 bg-white w-72 flex flex-col">
+                        <div className="flex items-center pl-4 py-4 border-b border-border mb-4">
+                            <Link to="/dashboard" onClick={() => setIsMobileOpen(false)} className="flex items-center gap-2 group cursor-pointer">
+                                <div className="bg-primary/10 p-1.5 rounded-lg group-hover:bg-primary/20 transition-colors">
+                                    <Activity className="h-5 w-5 text-primary" />
+                                </div>
+                                <span className="text-xl font-black tracking-tighter text-foreground">FamPlus</span>
+                            </Link>
+                        </div>
                         <Sidebar onClose={() => setIsMobileOpen(false)} />
                     </SheetContent>
                 </Sheet>
-                
-                {/* Brand Logo & Name */}
-                <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate("/dashboard")}>
+
+                {/* Brand Logo & Name (Visible everywhere except maybe mobile if we want to hide it, but YouTube shows it on mobile too) */}
+                <Link to="/dashboard" className="flex items-center gap-2 group cursor-pointer">
                     <div className="bg-primary/10 p-1.5 rounded-lg group-hover:bg-primary/20 transition-colors">
                         <Activity className="h-5 w-5 text-primary" />
                     </div>
                     <span className="text-xl font-black tracking-tighter text-foreground">FamPlus</span>
-                </div>
+                </Link>
             </div>
+            
             <DropdownMenu>
                 <DropdownMenuTrigger className="outline-none">
                     <Avatar className="h-10 w-10 cursor-pointer border-2 border-primary/20 hover:border-primary transition-colors bg-white">

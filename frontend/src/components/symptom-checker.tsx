@@ -6,7 +6,8 @@
  */
 
 import React, { useState } from 'react'
-import { getFamilyMembers, analyzeAndLogSymptom } from '@/app/actions/health'
+import { analyzeAndLogSymptom } from '@/app/actions/health'
+import { useFamilyContext } from '@/app/family-context'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,12 +67,41 @@ export function SymptomChecker() {
         }
         return null;
     })
+    const { familyMembers: members, selectedMemberId: contextSelectedMemberId, setSelectedMemberId: setContextSelectedMemberId } = useFamilyContext()
     const [loading, setLoading] = useState(false)
-    const [members, setMembers] = useState<any[]>([])
-    const [selectedMember, setSelectedMember] = useState(() => sessionStorage.getItem('famplus_ai_member') || "")
+    const [selectedMember, setSelectedMemberLocal] = useState(() => sessionStorage.getItem('famplus_ai_member') || "")
     const [vitalsStatus, setVitalsStatus] = useState<'fresh' | 'stale' | 'none'>('none')
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState("");
+
+    /**
+     * Unified setter: updates both local state and the global FamilyContext
+     * so that member selection on this page propagates back to Dashboard.
+     */
+    const setSelectedMember = (id: string) => {
+        setSelectedMemberLocal(id);
+        setContextSelectedMemberId(id);
+        sessionStorage.setItem('famplus_ai_member', id);
+    };
+
+    // Sync local selection whenever the Dashboard (or any page) changes the global context member.
+    React.useEffect(() => {
+        if (contextSelectedMemberId && contextSelectedMemberId !== selectedMember) {
+            setSelectedMemberLocal(contextSelectedMemberId);
+            sessionStorage.setItem('famplus_ai_member', contextSelectedMemberId);
+        }
+    }, [contextSelectedMemberId]);
+
+    // If no local selection yet but context has one, initialize from context.
+    React.useEffect(() => {
+        if (!selectedMember && contextSelectedMemberId) {
+            setSelectedMemberLocal(contextSelectedMemberId);
+        } else if (!selectedMember && members.length > 0) {
+            const firstId = members[0]._id || members[0].id;
+            setSelectedMemberLocal(firstId);
+            setContextSelectedMemberId(firstId);
+        }
+    }, [members, contextSelectedMemberId]);
 
     React.useEffect(() => {
         if (!isPreviewOpen && previewUrl) {
@@ -93,10 +123,6 @@ export function SymptomChecker() {
         }
     }, [result]);
 
-    React.useEffect(() => {
-        sessionStorage.setItem('famplus_ai_member', selectedMember);
-    }, [selectedMember]);
-
     /**
      * Resets the entire diagnostic interface, clearing local state and purging
      * the sessionStorage cache so the user can start a fresh analysis.
@@ -105,32 +131,15 @@ export function SymptomChecker() {
         setSymptoms("");
         setResult(null);
         if (members.length > 0) {
-            setSelectedMember(members[0]._id || members[0].id);
+            const firstId = members[0]._id || members[0].id;
+            setSelectedMember(firstId);
         } else {
-            setSelectedMember("");
+            setSelectedMemberLocal("");
         }
         sessionStorage.removeItem('famplus_ai_symptoms');
         sessionStorage.removeItem('famplus_ai_result');
         sessionStorage.removeItem('famplus_ai_member');
     };
-
-    React.useEffect(() => {
-        const fetchMembers = async () => {
-            try {
-                const userId = localStorage.getItem('userId') || "";
-                const data = await getFamilyMembers(userId)
-                if (Array.isArray(data)) {
-                    setMembers(data)
-                    if (data.length > 0 && !sessionStorage.getItem('famplus_ai_member')) {
-                        setSelectedMember(data[0]._id || data[0].id)
-                    }
-                }
-            } catch (e) {
-                console.error("Failed to load family members")
-            }
-        }
-        fetchMembers()
-    }, [])
 
     // Compute vitals freshness whenever selected member changes
     const selectedMemberData = members.find(m => (m._id || m.id) === selectedMember)
@@ -240,7 +249,7 @@ export function SymptomChecker() {
         doc.setFont('helvetica', 'normal');
         doc.text("AI Diagnostic Support Engine - Preliminary Report", 14, 28);
         
-        const date = new Date().toLocaleString();
+        const date = new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).toUpperCase();
         doc.text(`Generated: ${date}`, 14, 34);
 
         // Reset text color for body
@@ -284,7 +293,7 @@ export function SymptomChecker() {
             
             // Add Timestamp for Reliability
             if (selectedMemberData.latestVitalAt) {
-                const recordedAt = new Date(selectedMemberData.latestVitalAt).toLocaleString();
+                const recordedAt = new Date(selectedMemberData.latestVitalAt).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }).toUpperCase();
                 vitalsBody.push(['Vitals Taken At', sanitizeText(recordedAt)]);
             }
 
@@ -698,6 +707,7 @@ export function SymptomChecker() {
                                         </Link>
                                     </Button>
 
+                                    {result.condition !== 'Unspecific Symptoms' && result.confidence > 0 && (
                                     <div className="flex items-center justify-between w-full h-14 px-4 rounded-2xl border-2 bg-background text-foreground">
                                         <div className="flex items-center gap-3 ml-2">
                                             <div className="p-1.5 bg-primary/10 rounded-lg">
@@ -727,6 +737,7 @@ export function SymptomChecker() {
                                             </Button>
                                         </div>
                                     </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

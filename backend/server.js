@@ -17,7 +17,10 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { OAuth2Client } = require('google-auth-library');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Data Models
 const User = require('./models/User');
@@ -46,7 +49,7 @@ const app = express();
 // Middleware
 app.use(helmet()); // Basic security headers
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true
 }));
 app.use(express.json({ limit: '10kb' }));
@@ -506,6 +509,67 @@ app.post('/api/auth/login', validateAuthInput, async (req, res) => {
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Google OAuth — Token Exchange
+// The frontend sends the Google credential (ID token) received from the
+// Google Identity Services library. We verify it server-side and issue our own JWT.
+app.post('/api/auth/google', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ error: 'Google credential is required' });
+
+    // Verify the ID token with Google's public keys
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub: googleId } = payload;
+
+    if (!email) return res.status(400).json({ error: 'Google account has no email address' });
+
+    if (!dbConnected) return res.status(503).json({ error: 'Database disconnected' });
+
+    // Find or create the user (upsert on googleId or email)
+    let user = await User.findOne({ $or: [{ googleId }, { email }] });
+    if (!user) {
+      // New Google user — create an account without a password
+      user = await User.create({
+        email,
+        name: name || email.split('@')[0],
+        googleId,
+        avatar: picture,
+        // No password field — Google-only accounts skip password auth
+      });
+
+      // Auto-create a primary family circle for new users
+      const circle = await FamilyCircle.create({
+        name: `${user.name}'s Family`,
+        ownerId: user._id,
+        members: [user._id]
+      });
+      user.familyCircleId = circle._id;
+      await user.save();
+    } else if (!user.googleId) {
+      // Existing email/password account — link Google to it
+      user.googleId = googleId;
+      if (picture && !user.avatar) user.avatar = picture;
+      await user.save();
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    return res.json({
+      token,
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      familyCircleId: user.familyCircleId,
+    });
+  } catch (err) {
+    console.error('Google auth error:', err);
+    res.status(401).json({ error: 'Google authentication failed. Please try again.' });
   }
 });
 

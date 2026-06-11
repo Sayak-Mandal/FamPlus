@@ -118,10 +118,7 @@ export function ManageCircleDialog() {
                   {circle.familyMembers.map((fm: any) => (
                     <div key={fm._id} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-sm overflow-hidden shrink-0 border-2 border-white dark:border-slate-700 shadow-sm"
-                          style={{ backgroundColor: fm.avatarColor || '#6366f1' }}
-                        >
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm overflow-hidden border border-slate-200 dark:border-slate-600 shrink-0">
                           {fm.avatar
                             ? <img src={fm.avatar} alt={fm.name} className="w-full h-full object-cover" />
                             : <span>{fm.name?.[0]?.toUpperCase() || "?"}</span>

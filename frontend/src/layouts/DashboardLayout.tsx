@@ -23,25 +23,33 @@ export default function DashboardLayout() {
 
     return (
         <FamilyProvider>
-            <div className="h-full relative flex flex-col md:flex-row">
-                {/* Desktop Sidebar */}
-                <div className={cn(
-                    "hidden md:flex md:flex-col md:fixed md:inset-y-0 z-[80] border-r transition-all duration-300 bg-white",
-                    isCollapsed ? "md:w-20" : "md:w-72"
-                )}>
-                    <Sidebar isCollapsed={isCollapsed} onToggle={() => setIsCollapsed(!isCollapsed)} />
+            <div className="h-screen w-full flex flex-col bg-white overflow-hidden">
+                {/* Top Header - Full Width */}
+                <div className="flex-none z-[90] bg-white border-b">
+                    <DashboardHeader 
+                        user={user} 
+                        isCollapsed={isCollapsed} 
+                        onToggle={() => setIsCollapsed(!isCollapsed)} 
+                    />
                 </div>
                 
-                {/* Main Content */}
-                <main className={cn(
-                    "flex-1 bg-gradient-to-br from-slate-50 to-white min-h-screen transition-all duration-300",
-                    isCollapsed ? "md:pl-20" : "md:pl-72"
-                )}>
-                    <DashboardHeader user={user} />
-                    <div className="px-4 md:px-8 py-6 max-w-[1600px] mx-auto">
-                        <Outlet />
+                {/* Bottom Section - Sidebar + Main Content */}
+                <div className="flex-1 relative flex overflow-hidden">
+                    {/* Desktop Sidebar */}
+                    <div className={cn(
+                        "hidden md:flex md:flex-col border-r transition-all duration-300 bg-card overflow-y-auto z-[80]",
+                        isCollapsed ? "md:w-20" : "md:w-72"
+                    )}>
+                        <Sidebar isCollapsed={isCollapsed} />
                     </div>
-                </main>
+                    
+                    {/* Main Content */}
+                    <main className="flex-1 bg-gradient-to-br from-slate-50 to-white overflow-y-auto">
+                        <div className="px-4 md:px-8 py-6 max-w-[1600px] mx-auto min-h-full">
+                            <Outlet />
+                        </div>
+                    </main>
+                </div>
             </div>
         </FamilyProvider>
     )

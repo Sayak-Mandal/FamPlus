@@ -24,7 +24,6 @@ const MONGODB_URI = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb
  * location-based "nearby doctors" mapping features.
  */
 const doctorsData = [
-    { id: "1", name: "Dr. Anirban Roy", specialty: "Cardiologist", hospital: "Apollo Gleneagles Hospital", lat: 22.5735, lng: 88.3992, rating: 4.8 },
     { id: "2", name: "Dr. Sutanu Ghosh", specialty: "Cardiologist", hospital: "BM Birla Heart Research Centre", lat: 22.5328893, lng: 88.3282827, rating: 4.7 },
     { id: "14", name: "Dr. P.K. Deb", specialty: "Cardiologist", hospital: "Calcutta Medical Research Institute", lat: 22.5393, lng: 88.3275, rating: 4.9 },
     { id: "3", name: "Dr. Rina Das", specialty: "Dermatologist", hospital: "Skin Care Clinic", lat: 22.5626, lng: 88.3539, rating: 4.5 },
@@ -45,6 +44,7 @@ const doctorsData = [
     { id: "30", name: "Dr. S. Mukherjee", specialty: "Sleep Specialist", hospital: "Belle Vue Clinic", lat: 22.5460, lng: 88.3540, rating: 4.8 },
     { id: "31", name: "Dr. Amitabha Chowdhury", specialty: "Hepatologist", hospital: "Liver Foundation, Kolkata", lat: 22.5510, lng: 88.3620, rating: 4.9 },
     { id: "32", name: "Dr. Abhijit Das", specialty: "Hepatologist", hospital: "IPGMER & SSKM Hospital", lat: 22.5390, lng: 88.3440, rating: 4.6 },
+    { id: "1", name: "Dr. Anirban Roy", specialty: "Cardiologist", hospital: "Apollo Gleneagles Hospital", lat: 22.5735, lng: 88.3992, rating: 4.8 },
 ];
 
 /**
@@ -69,6 +69,7 @@ async function seedDoctors() {
             specialty: d.specialty,
             lat: d.lat,
             lng: d.lng,
+            hospital: d.hospital,
             address: d.hospital, // We use the hospital name as their primary address text
             phone: "+91-33-22221111", // Placeholder mock data
             email: `${d.name.toLowerCase().replace(' ', '.')}@example.com`,

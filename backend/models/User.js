@@ -24,7 +24,7 @@ const UserSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true // Stored as a hashed string in production
+    default: null // Null for Google-only accounts; hashed string for email/password accounts
   },
   name: {
     type: String,
@@ -35,6 +35,11 @@ const UserSchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+  googleId: {
+    type: String,
+    default: null,
+    index: true // Indexed for fast OAuth lookup
+  },
   familyCircleId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'FamilyCircle'
@@ -43,9 +48,9 @@ const UserSchema = new mongoose.Schema({
   timestamps: true // Track account creation and last update
 });
 
-// Hash password before saving
+// Hash password before saving — only if a password is actually set
 UserSchema.pre('save', async function() {
-  if (!this.isModified('password')) return;
+  if (!this.password || !this.isModified('password')) return;
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
