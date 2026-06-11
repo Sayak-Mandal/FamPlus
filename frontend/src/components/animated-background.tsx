@@ -105,7 +105,7 @@ export function AnimatedBackground() {
                 return (
                     <div 
                         key={i}
-                        ref={(el) => (iconRefs.current[i] = el)}
+                        ref={(el) => { iconRefs.current[i] = el; }}
                         className="absolute top-0 left-0 text-orange-500 drop-shadow-sm will-change-transform"
                         style={{ 
                             width: item.radius * 2, 

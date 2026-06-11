@@ -1,7 +1,7 @@
 
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Doctor } from '@prisma/client';
+import { Doctor } from '@/lib/data/doctors';
 import L from 'leaflet';
 
 // Fix for default marker icon in leaflet with webpack
