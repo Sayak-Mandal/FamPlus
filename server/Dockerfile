@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ai_engine.py .
+COPY ai_engine.py model.joblib metadata.joblib ./
 
 EXPOSE 8000
 
