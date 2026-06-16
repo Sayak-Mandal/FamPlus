@@ -1,16 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <!-- Rounded container matching the 'bg-primary/10 rounded-lg' class -->
-  <rect width="32" height="32" rx="8" fill="hsl(28, 67%, 45%)" fill-opacity="0.1" />
-  
-  <!-- Lucide Activity icon scaled and centered matching 'h-5 w-5 text-primary' -->
-  <g transform="translate(6, 6) scale(0.8333)">
-    <path
-      d="M22 12h-4l-3 9L9 3l-3 9H2"
-      fill="none"
-      stroke="hsl(28, 67%, 45%)"
-      stroke-width="2.4"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    />
-  </g>
+  <!-- Solid orange-brown background -->
+  <rect width="32" height="32" rx="7" fill="hsl(28, 67%, 45%)" />
+  <!-- White heartbeat / Activity line centered -->
+  <path
+    d="M3 16h5l2.5 7L16 7l4.5 11.5L23 16h6"
+    fill="none"
+    stroke="#ffffff"
+    stroke-width="2.8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
 </svg>
