@@ -13,7 +13,7 @@ jobs:
       - name: Ping Normal Backend Health Check
         run: |
           if [ -n "${{ secrets.BACKEND_URL }}" ]; then
-            echo "Pinging normal backend at ${{ secrets.BACKEND_URL }}/api/health..."
+            echo "Pinging normal backend..."
             curl -f -S -s -I "${{ secrets.BACKEND_URL }}/api/health"
           else
             echo "::warning::The BACKEND_URL secret is not configured in your repository settings."
@@ -22,7 +22,7 @@ jobs:
       - name: Ping AI Service Health Check
         run: |
           if [ -n "${{ secrets.AI_URL }}" ]; then
-            echo "Pinging AI service at ${{ secrets.AI_URL }}/docs..."
+            echo "Pinging AI service..."
             # Pings /docs (built-in FastAPI OpenAPI route) or falls back to root `/`
             curl -f -S -s -I "${{ secrets.AI_URL }}/docs" || curl -S -s -I "${{ secrets.AI_URL }}/"
           else
