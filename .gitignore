@@ -76,6 +76,7 @@ typings/
 .env.local
 technical_qna.md
 presentation_workflow.md
+PROFESSOR_GUIDE.md
 
 
 # parcel-bundler cache (https://parceljs.org/)
