@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 
 // Layout Providers
 // AuthLayout handles the shell for non-authenticated pages (Login/Signup)
@@ -22,6 +23,38 @@ import LandingPage from './pages/LandingPage';
 import { ThemeProvider } from './components/theme-provider';
 
 /**
+ * TitleUpdater Component
+ * ----------------------
+ * Dynamically updates the document title based on the active route/location.
+ */
+function TitleUpdater() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const routeTitles: Record<string, string> = {
+      "/": "AI Family Health Companion",
+      "/login": "Login",
+      "/signup": "Sign Up",
+      "/dashboard": "Overview",
+      "/ai-check": "AI Health Check",
+      "/journey": "Vitals Journey",
+      "/vault": "Medical Vault",
+      "/history": "History & Edits",
+      "/find-care": "Find Care",
+    };
+
+    const pageTitle = routeTitles[location.pathname];
+    if (pageTitle) {
+      document.title = `FamPlus - ${pageTitle}`;
+    } else {
+      document.title = "FamPlus";
+    }
+  }, [location.pathname]);
+
+  return null;
+}
+
+/**
  * App Component
  * ----------------
  * Root component of the application. Responsible for:
@@ -34,6 +67,7 @@ function App() {
     // Provide the theme context down the React tree, defaulting to 'light' mode
     <ThemeProvider defaultTheme="light" storageKey="vite-ui-theme">
       <BrowserRouter>
+        <TitleUpdater />
         <Routes>
           {/* 
             Public Marketing/Landing Route 
