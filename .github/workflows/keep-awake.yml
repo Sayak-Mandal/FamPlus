@@ -7,14 +7,24 @@ on:
   workflow_dispatch: # Allows manual triggering from GitHub UI
 
 jobs:
-  ping-backend:
+  ping-services:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Render Backend Health Check
+      - name: Ping Normal Backend Health Check
         run: |
-          if [ -z "${{ secrets.BACKEND_URL }}" ]; then
-            echo "::error::The BACKEND_URL secret is not configured in your repository settings."
-            exit 1
+          if [ -n "${{ secrets.BACKEND_URL }}" ]; then
+            echo "Pinging normal backend at ${{ secrets.BACKEND_URL }}/api/health..."
+            curl -f -S -s -I "${{ secrets.BACKEND_URL }}/api/health"
+          else
+            echo "::warning::The BACKEND_URL secret is not configured in your repository settings."
           fi
-          echo "Pinging backend at ${{ secrets.BACKEND_URL }}/api/health..."
-          curl -f -S -s -I "${{ secrets.BACKEND_URL }}/api/health"
+
+      - name: Ping AI Service Health Check
+        run: |
+          if [ -n "${{ secrets.AI_URL }}" ]; then
+            echo "Pinging AI service at ${{ secrets.AI_URL }}/docs..."
+            # Pings /docs (built-in FastAPI OpenAPI route) or falls back to root `/`
+            curl -f -S -s -I "${{ secrets.AI_URL }}/docs" || curl -S -s -I "${{ secrets.AI_URL }}/"
+          else
+            echo "::warning::The AI_URL secret is not configured in your repository settings."
+          fi
