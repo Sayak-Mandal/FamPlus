@@ -26,6 +26,7 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = React.useState(false)
     const [googleLoading, setGoogleLoading] = React.useState(false)
     const googleBtnRef = React.useRef<HTMLDivElement>(null)
+    const passwordRef = React.useRef<HTMLInputElement>(null)
 
     // Load Google Identity Services script and render the official Google button
     React.useEffect(() => {
@@ -112,6 +113,12 @@ export default function LoginPage() {
                         required
                         disabled={isLoading}
                         className="h-12 pl-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary text-sm font-medium tracking-wide placeholder:text-gray-400"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault()
+                                passwordRef.current?.focus()
+                            }
+                        }}
                     />
                 </div>
 
@@ -128,6 +135,7 @@ export default function LoginPage() {
                         autoCapitalize="none"
                         autoComplete="current-password"
                         disabled={isLoading}
+                        ref={passwordRef}
                         className="h-12 pl-12 pr-12 rounded-full border-2 border-gray-200 focus-visible:ring-primary focus-visible:border-primary"
                     />
                     <button
