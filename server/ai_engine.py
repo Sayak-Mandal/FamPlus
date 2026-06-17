@@ -1972,6 +1972,22 @@ def build_feature_vector(
 # SECTION 3: INFERENCE ENDPOINTS (FASTAPI)
 # ==============================================================================
 
+@app.get("/health")
+async def health_check():
+    """Lightweight health check endpoint for keep-awake pings and uptime monitoring."""
+    return {
+        "status": "ok",
+        "model_loaded": model is not None,
+        "metadata_loaded": metadata is not None,
+    }
+
+
+@app.get("/")
+async def root():
+    """Root endpoint — also used as a fallback keep-awake ping target."""
+    return {"status": "ok", "service": "Famplus AI Engine", "version": "4.0"}
+
+
 @app.post("/predict_symptoms")
 async def predict_symptoms(request: SymptomRequest):
     """

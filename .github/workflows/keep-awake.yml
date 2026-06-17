@@ -2,7 +2,7 @@ name: Keep Backend Awake
 
 on:
   schedule:
-    # Runs every 12 minutes
+    # Runs every 12 minutes to prevent Render free tier sleep (15-min threshold)
     - cron: '*/12 * * * *'
   workflow_dispatch: # Allows manual triggering from GitHub UI
 
@@ -12,19 +12,24 @@ jobs:
     steps:
       - name: Ping Normal Backend Health Check
         run: |
-          if [ -n "${{ secrets.BACKEND_URL }}" ]; then
-            echo "Pinging normal backend..."
-            curl -f -S -s -I "${{ secrets.BACKEND_URL }}/api/health"
-          else
-            echo "::warning::The BACKEND_URL secret is not configured in your repository settings."
+          if [ -z "${{ secrets.BACKEND_URL }}" ]; then
+            echo "::error::BACKEND_URL secret is not set! Go to Settings → Secrets → Actions to add it."
+            exit 1
           fi
+          echo "Pinging normal backend at ${{ secrets.BACKEND_URL }}/api/health ..."
+          curl --fail --silent --show-error --max-time 30 "${{ secrets.BACKEND_URL }}/api/health"
+          echo ""
+          echo "✅ Normal backend is awake!"
 
       - name: Ping AI Service Health Check
         run: |
-          if [ -n "${{ secrets.AI_URL }}" ]; then
-            echo "Pinging AI service..."
-            # Pings /docs (built-in FastAPI OpenAPI route) or falls back to root `/`
-            curl -f -S -s -I "${{ secrets.AI_URL }}/docs" || curl -S -s -I "${{ secrets.AI_URL }}/"
-          else
-            echo "::warning::The AI_URL secret is not configured in your repository settings."
+          if [ -z "${{ secrets.AI_URL }}" ]; then
+            echo "::error::AI_URL secret is not set! Go to Settings → Secrets → Actions to add it."
+            exit 1
           fi
+          echo "Pinging AI service at ${{ secrets.AI_URL }}/health ..."
+          # Tries /health first (new endpoint), falls back to root /
+          curl --fail --silent --show-error --max-time 30 "${{ secrets.AI_URL }}/health" \
+            || curl --fail --silent --show-error --max-time 30 "${{ secrets.AI_URL }}/"
+          echo ""
+          echo "✅ AI service is awake!"
