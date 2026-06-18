@@ -113,8 +113,9 @@ function SceneController({ containerRef, planetDivRefs }: SceneControllerProps) 
       const div = planetDivRefs.current[i];
       if (!div) return;
 
-      div.style.left   = `${px}px`;
-      div.style.top    = `${py}px`;
+      // Use transform only — mixing left/top + transform causes conflicts.
+      // translate(px,py) moves to the screen position; translate(-50%,-50%) centres the icon.
+      div.style.transform = `translate(${px}px, ${py}px) translate(-50%, -50%)`;
       // wz < 0 → behind Sun (lower z-index), wz ≥ 0 → in front (higher z-index)
       div.style.zIndex = wz < 0 ? '5' : '15';
     });
@@ -191,6 +192,8 @@ export function Guardian3D() {
       {PLANET_CONFIGS.map((cfg, i) => {
         const { Icon } = cfg;
         return (
+          // top:0 left:0 are the anchor — transform moves it to screen position each frame.
+          // Initially translated far off-screen; first useFrame tick will correct it.
           <div
             key={i}
             ref={setPlanetRef(i)}
@@ -199,7 +202,7 @@ export function Guardian3D() {
               top:       0,
               left:      0,
               zIndex:    5,
-              transform: 'translate(-9999px, -9999px) translate(-50%, -50%)',
+              transform: 'translate(-9999px, -9999px)',
             }}
           >
             <div className="flex items-center justify-center w-12 h-12 rounded-full bg-white/90 dark:bg-slate-900/90 border border-white/80 dark:border-slate-800/60 shadow-lg backdrop-blur-md text-primary cursor-pointer select-none transition-shadow duration-300 hover:shadow-primary/20">
