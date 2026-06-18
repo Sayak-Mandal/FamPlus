@@ -184,7 +184,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="py-12 border-t border-slate-200 text-center">
-        <p className="text-sm text-slate-400 font-medium">© 2026 Famplus. Advanced AI Health Companion.</p>
+        <p className="text-sm text-slate-400 font-medium">Famplus. Advanced AI Health Companion.</p>
       </footer>
     </div>
   )
