@@ -17,7 +17,12 @@ jobs:
             exit 1
           fi
           echo "Pinging normal backend at ${{ secrets.BACKEND_URL }}/api/health ..."
-          curl --fail --silent --show-error --max-time 30 "${{ secrets.BACKEND_URL }}/api/health"
+          curl --fail --silent --show-error \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            "${{ secrets.BACKEND_URL }}/api/health"
           echo ""
           echo "✅ Normal backend is awake!"
 
@@ -28,8 +33,17 @@ jobs:
             exit 1
           fi
           echo "Pinging AI service at ${{ secrets.AI_URL }}/health ..."
-          # Tries /health first (new endpoint), falls back to root /
-          curl --fail --silent --show-error --max-time 30 "${{ secrets.AI_URL }}/health" \
-            || curl --fail --silent --show-error --max-time 30 "${{ secrets.AI_URL }}/"
+          # Try /health with retries, fall back to root /
+          curl --fail --silent --show-error \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 10 \
+            --retry-all-errors \
+            "${{ secrets.AI_URL }}/health" \
+            || curl --fail --silent --show-error \
+               --max-time 90 \
+               --retry 2 \
+               --retry-delay 10 \
+               "${{ secrets.AI_URL }}/"
           echo ""
           echo "✅ AI service is awake!"
