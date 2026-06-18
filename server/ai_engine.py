@@ -1212,6 +1212,63 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'spitting blood':                     'blood_in_sputum',
     'vomiting blood':                     'blood_in_sputum',
     'blood when i cough':                 'blood_in_sputum',
+
+    # ── Colloquial Body-Dysfunction Phrases (v6) ──────────────────────────────
+    # These natural-language descriptions get 0 features from the NLP pipeline
+    # because they describe function loss rather than named symptoms.
+    # They now map to the closest clinical proxy.
+    'arm not working':                    'arm_weakness',
+    'my arm is not working':              'arm_weakness',
+    'arm doesnt work':                    'arm_weakness',
+    'arm wont work':                      'arm_weakness',
+    'arm stopped working':                'arm_weakness',
+    'cant use my arm':                    'arm_weakness',
+    'cannot use my arm':                  'arm_weakness',
+    'arm not moving':                     'arm_weakness',
+    'arm wont move':                      'arm_weakness',
+    'arm stopped moving':                 'arm_weakness',
+    'cant move arm':                      'arm_weakness',
+    'leg not working':                    'weakness_in_limbs',
+    'my leg is not working':              'weakness_in_limbs',
+    'leg doesnt work':                    'weakness_in_limbs',
+    'leg wont work':                      'weakness_in_limbs',
+    'leg stopped working':                'weakness_in_limbs',
+    'cant use my leg':                    'weakness_in_limbs',
+    'cannot use my leg':                  'weakness_in_limbs',
+    'leg not moving':                     'weakness_in_limbs',
+    'cant move leg':                      'weakness_in_limbs',
+    'hand not working':                   'arm_weakness',
+    'my hand is not working':             'arm_weakness',
+    'hand doesnt work':                   'arm_weakness',
+    'hand wont work':                     'arm_weakness',
+    'cant use my hand':                   'arm_weakness',
+    'fingers not working':                'arm_weakness',
+    'cant feel my arm':                   'arm_weakness',
+    'cant feel my leg':                   'weakness_in_limbs',
+    'cant feel my hand':                  'arm_weakness',
+    'cant feel my fingers':               'arm_weakness',
+    'body not working':                   'weakness_in_limbs',
+    'body stopped working':               'weakness_in_limbs',
+    'cant move body':                     'weakness_in_limbs',
+    'cant move properly':                 'weakness_in_limbs',
+    'cant walk properly':                 'painful_walking',
+    'difficulty walking':                 'painful_walking',
+    'trouble walking':                    'painful_walking',
+    'hard to walk':                       'painful_walking',
+    'cant stand up':                      'loss_of_balance',
+    'keep falling':                       'loss_of_balance',
+    'falling over':                       'loss_of_balance',
+    'cant stand':                         'loss_of_balance',
+    'cant see properly':                  'blurred_and_distorted_vision',
+    'cant see clearly':                   'blurred_and_distorted_vision',
+    'vision going blurry':                'blurred_and_distorted_vision',
+    'cant hear properly':                 'altered_sensorium',
+    'not feeling normal':                 'malaise',
+    'something is wrong':                 'malaise',
+    'dont feel right':                    'malaise',
+    'feel off':                           'malaise',
+    'feel strange':                       'malaise',
+    'feeling strange':                    'malaise',
 }
 
 
@@ -2072,6 +2129,16 @@ async def predict_symptoms(request: SymptomRequest):
     emergency_override = check_emergency_override(all_extracted_markers)
 
     if not valid_features and not emergency_override:
+        # ── Groq Rescue Path ──────────────────────────────────────────────────
+        # When the NLP pipeline fails to map the input to known symptom tokens
+        # (e.g. colloquial phrases like "my arm is not working"), try Groq before
+        # giving up. Groq understands natural language far better than alias/NER matching.
+        if is_groq_available():
+            print("🧠 No features from NLP — invoking Groq as symptom-rescue path...")
+            groq_result = predict_with_groq(data.symptoms, data.vitals_context)
+            if groq_result is not None:
+                return groq_result
+            print("⚠️  Groq rescue returned None — falling back to unrecognized response")
         return get_fallback_response(
             "We could not recognize any specific medical symptoms in your input."
         )
