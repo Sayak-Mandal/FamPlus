@@ -438,19 +438,21 @@ export function SymptomChecker() {
             </CardHeader>
             <CardContent className="space-y-6 pt-2 z-10 relative">
                 <div className="flex flex-col md:flex-row items-start gap-6 md:gap-4 w-full">
-                    <div className="md:w-1/3 relative">
-                        <select
-                            className="h-14 w-full pl-4 pr-10 rounded-2xl bg-muted/30 border-input focus:ring-primary border text-lg font-medium transition-all hover:bg-muted/50 appearance-none cursor-pointer"
-                            value={selectedMember}
-                            onChange={(e) => setSelectedMember(e.target.value)}
-                        >
-                            <option value="" disabled>Select Family Member</option>
-                            {members.map(m => (
-                                <option key={m._id || m.id} value={m._id || m.id}>{m.name}</option>
-                            ))}
-                        </select>
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center">
-                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                    <div className="md:w-1/3">
+                        <div className="relative">
+                            <select
+                                className="h-14 w-full pl-4 pr-10 rounded-2xl bg-muted/30 border-input focus:ring-primary border text-lg font-medium transition-all hover:bg-muted/50 appearance-none cursor-pointer"
+                                value={selectedMember}
+                                onChange={(e) => setSelectedMember(e.target.value)}
+                            >
+                                <option value="" disabled>Select Family Member</option>
+                                {members.map(m => (
+                                    <option key={m._id || m.id} value={m._id || m.id}>{m.name}</option>
+                                ))}
+                            </select>
+                            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center">
+                                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                            </div>
                         </div>
                         {/* Vitals Status Indicator */}
                         {selectedMemberData && (
