@@ -43,7 +43,7 @@ export default function LandingPage() {
             <div className="bg-primary p-2 rounded-xl">
               <Activity className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-black tracking-tight text-slate-900">Famplus</span>
+            <span className="text-xl font-black tracking-tight text-slate-900">FamPlus</span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/login">
@@ -184,7 +184,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="py-12 border-t border-slate-200 text-center">
-        <p className="text-sm text-slate-400 font-medium">Famplus. Advanced AI Health Companion.</p>
+        <p className="text-sm text-slate-400 font-medium">FamPlus. Advanced AI Health Companion.</p>
       </footer>
     </div>
   )
