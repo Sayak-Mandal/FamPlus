@@ -35,7 +35,7 @@ import {
 const TILT_ANGLE = Math.PI / 2.8;
 
 interface PlanetConfig {
-  Icon: React.ElementType;
+  Icon: React.ElementType<any>;
   radius: number;
   speed: number;
   offset: number;
