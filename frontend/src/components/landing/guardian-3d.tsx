@@ -7,7 +7,7 @@
  * 
  * @module Guardian3D
  */
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Sparkles, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -25,7 +25,6 @@ interface PlanetProps {
 
 function Planet({ Icon, radius, speed, offset, scale }: PlanetProps) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const [isBehind, setIsBehind] = useState(false);
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -37,25 +36,16 @@ function Planet({ Icon, radius, speed, offset, scale }: PlanetProps) {
       const y = radius * Math.sin(theta) * Math.cos(TILT_ANGLE);
       const z = -radius * Math.sin(theta) * Math.sin(TILT_ANGLE);
       meshRef.current.position.set(x, y, z);
-
-      // Dynamically toggle z-index sorting based on 3D depth to camera
-      const behind = z < 0;
-      if (behind !== isBehind) {
-        setIsBehind(behind);
-      }
     }
   });
 
-  // When behind the Sun, set z-index to 40 (lower than the Sun's 50)
-  // When in front of the Sun, set z-index to 60 (higher than the Sun's 50)
-  const zRange: [number, number] = isBehind ? [40, 40] : [60, 60];
-
   return (
     <mesh ref={meshRef}>
-      {/* We use zIndexRange={zRange} to map the relative z-index dynamically in DOM */}
+      {/* We use zIndexRange={[100, 0]} to match the Sun, which allows Drei to naturally
+          sort the DOM elements' z-index based on their 3D depth relative to the camera. */}
       <Html 
         center 
-        zIndexRange={zRange}
+        zIndexRange={[100, 0]}
       >
         <div 
           style={{ transform: `scale(${scale})` }}
@@ -85,9 +75,8 @@ interface SunProps {
 function Sun({ scale }: SunProps) {
   return (
     <mesh>
-      {/* Central Sun is drawn at z = 0. We lock its zIndex to 50,
-          allowing planets to render behind (z-index 40) or in front (z-index 60) of it. */}
-      <Html center zIndexRange={[50, 50]}>
+      {/* Central Sun is drawn at z = 0. Its HTML overlay naturally layers with the planets */}
+      <Html center zIndexRange={[100, 0]}>
         <div 
           style={{ transform: `scale(${scale})` }}
           className="relative flex items-center justify-center transition-transform duration-300"
@@ -155,7 +144,8 @@ export function Guardian3D() {
       {/* Ambient glow behind the canvas */}
       <div className="absolute inset-0 bg-gradient-to-tr from-orange-400/10 via-transparent to-indigo-500/5 rounded-[3rem] blur-3xl -z-10" />
       
-      <Canvas camera={{ position: [0, 0, 7], fov: 45 }} className="w-full h-full pointer-events-auto">
+      {/* Set far clipping plane to 20 so relative depth differences project into the zIndexRange properly */}
+      <Canvas camera={{ position: [0, 0, 7], fov: 45, far: 20 }} className="w-full h-full pointer-events-auto">
         <ambientLight intensity={0.6} />
         <pointLight position={[10, 10, 10]} intensity={1.2} color="#f97316" />
         <pointLight position={[-10, -10, -10]} intensity={0.6} color="#06b6d4" />
