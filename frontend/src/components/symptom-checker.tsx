@@ -11,7 +11,7 @@ import { useFamilyContext } from '@/app/family-context'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff, Eye, FileText, RotateCcw } from 'lucide-react'
+import { Loader2, Sparkles, AlertTriangle, ArrowRight, Bot, MapPin, Stethoscope, ShieldCheck, ListChecks, Activity, HeartPulse, Clock, CheckCircle2, Download, Mic, MicOff, Eye, FileText, RotateCcw, ChevronDown } from 'lucide-react'
 import { Link } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import jsPDF from 'jspdf';
@@ -438,9 +438,9 @@ export function SymptomChecker() {
             </CardHeader>
             <CardContent className="space-y-6 pt-2 z-10 relative">
                 <div className="flex flex-col md:flex-row items-start gap-6 md:gap-4 w-full">
-                    <div className="md:w-1/3">
+                    <div className="md:w-1/3 relative">
                         <select
-                            className="h-14 w-full px-4 rounded-2xl bg-muted/30 border-input focus:ring-primary border text-lg font-medium transition-all hover:bg-muted/50"
+                            className="h-14 w-full pl-4 pr-10 rounded-2xl bg-muted/30 border-input focus:ring-primary border text-lg font-medium transition-all hover:bg-muted/50 appearance-none cursor-pointer"
                             value={selectedMember}
                             onChange={(e) => setSelectedMember(e.target.value)}
                         >
@@ -449,6 +449,9 @@ export function SymptomChecker() {
                                 <option key={m._id || m.id} value={m._id || m.id}>{m.name}</option>
                             ))}
                         </select>
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none flex items-center">
+                            <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                        </div>
                         {/* Vitals Status Indicator */}
                         {selectedMemberData && (
                             <div className={`mt-2 flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold w-fit transition-all ${
