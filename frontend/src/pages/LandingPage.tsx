@@ -117,8 +117,8 @@ export default function LandingPage() {
       {/* Features Grid & 3D Core */}
       <section className="py-24 bg-white relative overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col lg:flex-row gap-16 items-center">
-            
+          <div className="flex flex-col lg:flex-row gap-12 items-stretch">
+
             {/* Left side: Text & Features */}
             <div className="flex-1 space-y-12">
               <div className="space-y-4">
@@ -127,23 +127,23 @@ export default function LandingPage() {
               </div>
 
               <div className="grid sm:grid-cols-2 gap-6">
-                <FeatureCard 
+                <FeatureCard
                   icon={<Sparkles className="w-6 h-6 text-white" />}
                   title="Cloud AI Reasoning"
                   desc="Powered by LLaMA and SciSpacy NLP, processing complex medical contexts instantly."
                   highlight={true}
                 />
-                <FeatureCard 
+                <FeatureCard
                   icon={<FileText className="w-6 h-6 text-indigo-500" />}
                   title="Clinical Reports"
                   desc="Instantly generate branded, professional PDF diagnostic reports with integrated patient vitals."
                 />
-                <FeatureCard 
+                <FeatureCard
                   icon={<Users className="w-6 h-6 text-orange-500" />}
                   title="Family Circles"
                   desc="Independent accounts linked by trust. Everyone keeps their own identity while sharing data."
                 />
-                <FeatureCard 
+                <FeatureCard
                   icon={<Shield className="w-6 h-6 text-green-600" />}
                   title="Hashed & Verified"
                   desc="All diagnostic data is secured via signed JWT tokens. Your privacy is our highest priority."
@@ -151,8 +151,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right side: 3D Animation */}
-            <div className="flex-1 w-full lg:w-1/2">
+            {/* Right side: 3D Animation — self-stretch so it fills the same height as the cards */}
+            <div className="flex-1 self-stretch flex items-center justify-center min-h-[420px] lg:min-h-0">
               <Guardian3D />
             </div>
 

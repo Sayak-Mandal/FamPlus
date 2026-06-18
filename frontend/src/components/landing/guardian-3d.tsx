@@ -153,7 +153,7 @@ export function Guardian3D() {
      */
     <div
       ref={containerRef}
-      className="w-full h-[400px] lg:h-[500px] relative overflow-hidden"
+      className="w-full h-full relative overflow-hidden"
       style={{ isolation: 'isolate' }}
     >
       {/* ── Ambient background glow ─────────────────────────────────────── */}
