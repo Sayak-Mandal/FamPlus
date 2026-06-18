@@ -26,6 +26,7 @@ import {
   Activity,
   HeartPulse,
   Stethoscope,
+  type LucideIcon
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────
@@ -35,7 +36,7 @@ import {
 const TILT_ANGLE = Math.PI / 2.8;
 
 interface PlanetConfig {
-  Icon: React.ElementType<any>;
+  Icon: LucideIcon;
   radius: number;
   speed: number;
   offset: number;
