@@ -1334,6 +1334,35 @@ app.post('/api/circle/accept', requireAuth, async (req, res) => {
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 // ─────────────────────────────────────────────
+// AI WARM-UP ENDPOINT (public, no auth required)
+// ─────────────────────────────────────────────
+/**
+ * Proactively wakes the Python AI engine when a visitor lands on the marketing page.
+ * The browser hits this endpoint → we respond 202 instantly (non-blocking) → then
+ * fire a background HEAD request to the AI engine's /health route so the Render
+ * cold-start finishes before the user completes signup/login.
+ *
+ * Rate limited separately to 30 req/15 min to avoid abuse.
+ */
+const warmupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many warmup requests.' }
+});
+
+app.get('/api/ai-warmup', warmupLimiter, (req, res) => {
+  // Respond immediately so the browser is never blocked
+  res.status(202).json({ status: 'warming_up', message: 'AI engine wake signal sent.' });
+
+  // Fire-and-forget background ping — does NOT block the response above
+  axios.get(`${AI_ENGINE_URL}/health`, { timeout: 90_000 })
+    .then(() => console.log('🔥 AI warm-up ping: engine responded OK'))
+    .catch(err => console.warn('⚠️  AI warm-up ping: engine cold-starting —', err.message));
+});
+
+// ─────────────────────────────────────────────
 // START SERVER
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;

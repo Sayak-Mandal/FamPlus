@@ -1,3 +1,4 @@
+import { useEffect } from "react"
 import { Link } from "react-router-dom"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,19 @@ const staggerContainer = {
  * Employs modern UI frameworks (Framer Motion, Lucide Icons) and advanced positioning.
  */
 export default function LandingPage() {
+  /**
+   * AI Engine Warm-Up — fires once on mount, completely invisible to the user.
+   * Hits the backend's /api/ai-warmup route which in turn pings the Python AI
+   * engine's /health endpoint to trigger its Render cold-start.
+   * By the time the visitor fills in signup/login (~30-60s), the AI is warm.
+   */
+  useEffect(() => {
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+    fetch(`${apiBase}/ai-warmup`)
+      .then(() => console.log('[FamPlus] AI engine warm-up signal sent ✅'))
+      .catch(() => {/* silently ignore — network errors don't matter here */});
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] selection:bg-primary/20">
       {/* Navbar with Glassmorphism Lite */}
