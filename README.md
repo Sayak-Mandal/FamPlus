@@ -7,23 +7,23 @@ Famplus is a premium, high-performance health platform engineered for proactive 
 
 ---
 
-## 🚀 Vision & Key Features
+##  Vision & Key Features
 
 Famplus is a research-oriented health monitoring prototype designed to bridge the gap between tracking and triage. Our latest version introduces **Guardian Technology**—a 3D-enhanced visualization layer that helps monitor family health trends with greater clarity.
 
-### 🧠 Advanced AI Ecosystem
+###  Advanced AI Ecosystem
 *   **SciSpacy NLP Pipeline**: Utilizes an automated biomedical entity extraction pipeline to better understand medical terminology and conversational symptom descriptions.
 *   **Vitals-Contextual Diagnostics**: The Gradient Boosting model correlates symptoms with real-time Age, Heart Rate, and Blood Pressure for improved diagnostic simulations.
 *   **Groq Cloud LLM Integration**: Leverages Groq's high-speed cloud completion API (`llama-3.1-8b-instant`) for fast, contextual medical reasoning and advice simulations.
 *   **Professional PDF Reporting**: Generate, preview directly in the application, and download clinical-ready PDF diagnostic reports.
 
-### 🎨 Premium Design & Glassmorphism UX
+###  Premium Design & Glassmorphism UX
 *   **Glassmorphic Indicators**: An interactive Wellness Score panel utilizing CSS backdrop-filter glassmorphism, dynamic green/yellow/red risk alerts, and slow-pulsing background glow blobs.
 *   **Live Vitals Responsiveness**: Calculates user health index dynamically using live heart rate inputs with safety warnings (e.g. bradycardia detection).
 *   **3D Guardian Landing Page**: An immersive Three.js-powered experience showcasing the "Guardian" preventative features.
 *   **Custom Physics Engine**: A lightweight 2D collision physics engine powers micro-interactions and animated CSS icons for a tactile, high-end feel.
 
-### 📁 Medical Vault & Secure Records
+###  Medical Vault & Secure Records
 *   **MongoDB GridFS Secure Storage**: User-uploaded medical records (PDFs, images) are streamed directly into MongoDB GridFS, keeping them encrypted and securely integrated into the database without storing files on the local filesystem.
 *   **In-App Document Vault**: Allows uploading files with secure, authenticated API access, resolving file URLs dynamically.
 *   **Document Previews & Downloads**: Preview PDFs and images directly inside the application workspace or download them securely from the GridFS stream.
@@ -32,7 +32,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 
 ---
 
-## 🛠️ High-Performance Technology Stack
+##  High-Performance Technology Stack
 
 | Layer | Core Technologies |
 | :--- | :--- |
@@ -43,7 +43,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 
 ---
 
-## 📦 Quick Start
+##  Quick Start
 
 ### 1. Prerequisites
 - **Node.js** (v18+) & **Python** (v3.9+)
