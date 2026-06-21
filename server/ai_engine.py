@@ -2030,6 +2030,7 @@ def build_feature_vector(
 # ==============================================================================
 
 @app.get("/health")
+@app.head("/health")
 async def health_check():
     """Lightweight health check endpoint for keep-awake pings and uptime monitoring."""
     return {
@@ -2040,6 +2041,7 @@ async def health_check():
 
 
 @app.get("/")
+@app.head("/")
 async def root():
     """Root endpoint — also used as a fallback keep-awake ping target."""
     return {"status": "ok", "service": "Famplus AI Engine", "version": "4.0"}
