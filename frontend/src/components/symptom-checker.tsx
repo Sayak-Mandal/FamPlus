@@ -69,6 +69,7 @@ export function SymptomChecker() {
     })
     const { familyMembers: members, selectedMemberId: contextSelectedMemberId, setSelectedMemberId: setContextSelectedMemberId } = useFamilyContext()
     const [loading, setLoading] = useState(false)
+    const [slowLoading, setSlowLoading] = useState(false)
     const [selectedMember, setSelectedMemberLocal] = useState(() => sessionStorage.getItem('famplus_ai_member') || "")
     const [vitalsStatus, setVitalsStatus] = useState<'fresh' | 'stale' | 'none'>('none')
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -173,10 +174,23 @@ export function SymptomChecker() {
             return;
         }
         setLoading(true);
+        setSlowLoading(false);
+        // After 5 seconds, hint to the user the AI may be cold-starting
+        const slowTimer = setTimeout(() => setSlowLoading(true), 5000);
         try {
             const response = await analyzeAndLogSymptom(selectedMember, symptoms);
             if (response.success && response.data) {
                 setResult(response.data);
+            } else if ((response as any).warmingUp) {
+                // Render free-tier cold start: show a friendly retry message
+                setResult({
+                    condition: 'AI Engine Starting Up',
+                    confidence: 0,
+                    advice: (response as any).error || 'The AI engine is starting up. This can take up to 60 seconds on first use. Please wait a moment and try again.',
+                    specialist: 'N/A',
+                    urgency: 'Normal',
+                    disclaimer: 'This is not a service error. The AI engine spins down after inactivity on the free tier and requires a short warm-up period before it can respond.',
+                });
             } else {
                 console.error('AI analysis failed:', response.error);
                 setResult({
@@ -190,7 +204,9 @@ export function SymptomChecker() {
         } catch (error) {
             console.error(error);
         } finally {
+            clearTimeout(slowTimer);
             setLoading(false);
+            setSlowLoading(false);
         }
     }
 
@@ -566,6 +582,12 @@ export function SymptomChecker() {
                         {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <ArrowRight className="h-6 w-6" />}
                     </Button>
                 </div>
+                {loading && slowLoading && (
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-sm font-medium animate-in fade-in duration-500">
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        The AI engine is starting up. This may take up to 60 seconds on first use. Please wait.
+                    </div>
+                )}
 
                 {result && (
                     <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">

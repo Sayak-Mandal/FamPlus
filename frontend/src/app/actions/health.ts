@@ -8,6 +8,10 @@ import axios from 'axios';
 
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001/api',
+    // 95s timeout: covers Render free-tier cold starts (50+ seconds) with buffer.
+    // Must be longer than the backend's 90s axios timeout to avoid the browser
+    // cutting off the request before the backend gets a response from the AI engine.
+    timeout: 95_000,
 });
 
 const getHeaders = () => {
@@ -62,8 +66,16 @@ export async function analyzeAndLogSymptom(familyMemberId: string, symptoms: str
     try {
         const response = await api.post(`/family/${familyMemberId}/analyze-symptoms`, { symptoms }, { headers: getHeaders() });
         return { success: true, data: response.data };
-    } catch (error) {
-        return { success: false, error: "Failed to analyze symptoms" };
+    } catch (error: any) {
+        // 503 = AI engine is cold-starting on Render free tier
+        if (error?.response?.status === 503 && error?.response?.data?.retryable) {
+            return { 
+                success: false, 
+                warmingUp: true,
+                error: error.response.data.error || 'AI engine is warming up. Please try again in a moment.' 
+            };
+        }
+        return { success: false, warmingUp: false, error: "Failed to analyze symptoms" };
     }
 }
 

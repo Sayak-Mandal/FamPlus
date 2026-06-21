@@ -875,10 +875,11 @@ app.post('/api/family/:memberId/analyze-symptoms', requireAuth, requireMemberAcc
     }
 
     // Orchestration: Call Python AI engine for inference with vitals context
+    // Timeout is 90s to handle Render free-tier cold starts (which can take 50+ seconds)
     const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { 
       symptoms,
       vitals_context
-    });
+    }, { timeout: 90_000 });
     const {
       condition,
       confidence,
@@ -921,6 +922,14 @@ app.post('/api/family/:memberId/analyze-symptoms', requireAuth, requireMemberAcc
     });
   } catch (err) {
     console.error('Symptom analysis error:', err.message);
+    // Use 503 (retriable) when it's an AI engine connectivity issue vs. 500 for internal errors
+    const isConnectivityError = err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || (err.response && err.response.status >= 500);
+    if (isConnectivityError) {
+      return res.status(503).json({ 
+        error: 'AI engine is warming up. This can take up to 60 seconds on first use — please try again shortly.',
+        retryable: true
+      });
+    }
     res.status(500).json({ error: 'Failed to analyze symptoms. Is the AI engine running?' });
   }
 });
@@ -957,7 +966,8 @@ app.post('/api/doctors/analyze', requireAuth, async (req, res) => {
 
     if (!specialist) {
       // AI Prediction -> Specialty Matching
-      const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms });
+      // Timeout is 90s to handle Render free-tier cold starts
+      const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_symptoms`, { symptoms }, { timeout: 90_000 });
       specialist = aiRes.data.specialist;
       // analysis is now built from scoped variables (not condition/advice which were never declared)
       analysis = `${aiRes.data.condition} — ${aiRes.data.advice}`;
@@ -1027,10 +1037,17 @@ app.post('/api/family/:memberId/wellness', requireAuth, requireMemberAccess, asy
       sleep: member?.sleep || '7h',
     }));
 
-    const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_wellness`, { vitals_history });
+    const aiRes = await axios.post(`${AI_ENGINE_URL}/predict_wellness`, { vitals_history }, { timeout: 90_000 });
     res.json(aiRes.data);
   } catch (err) {
     console.error('Wellness error:', err.message);
+    const isConnectivityError = err.code === 'ECONNREFUSED' || err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || (err.response && err.response.status >= 500);
+    if (isConnectivityError) {
+      return res.status(503).json({ 
+        error: 'AI engine is warming up. Please try again in a moment.',
+        retryable: true
+      });
+    }
     res.status(500).json({ error: 'Failed to compute wellness score.' });
   }
 });
@@ -1371,6 +1388,9 @@ const server = app.listen(PORT, () => {
 });
 
 // DDoS mitigation: Set connection & header timeouts
-server.headersTimeout = 10 * 1000; // 10 seconds
-server.requestTimeout = 15 * 1000; // 15 seconds
-server.keepAliveTimeout = 5 * 1000; // 5 seconds
+// NOTE: requestTimeout must be longer than the AI engine axios timeout (90s)
+// to allow cold-start wake-ups on Render free tier without the Node server
+// killing the connection prematurely.
+server.headersTimeout = 10 * 1000;   // 10 seconds
+server.requestTimeout = 120 * 1000; // 120 seconds (covers 90s AI cold start + buffer)
+server.keepAliveTimeout = 5 * 1000;  // 5 seconds
