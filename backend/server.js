@@ -46,6 +46,10 @@ let gridFSBucket;
 
 // Initialize Express Application
 const app = express();
+// Trust Render's reverse proxy so that express-rate-limit can correctly
+// identify client IPs from the X-Forwarded-For header. Without this,
+// all requests appear to share one IP, causing spurious 429 errors.
+app.set('trust proxy', 1);
 // Middleware
 app.use(helmet()); // Basic security headers
 app.use(cors({
