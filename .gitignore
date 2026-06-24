@@ -152,3 +152,10 @@ ENV/
 # Famplus Uploads / Documents
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Famplus Report Files (Local only)
+famplus report file*.pdf
+famplus_report_file*.md
+famplus report file*.md
+famplus_report_file*.pdf
+
