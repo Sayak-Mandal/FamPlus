@@ -88,9 +88,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 
 ## 📂 Version Control Exclusions
 
-To protect sensitive intellectual property, academic reports, and dynamically compiled binaries, the following file types and specific directories are explicitly excluded in `.gitignore` and kept local-only:
-*   **Report PDFs**: `famplus report file*.pdf`
-*   **Report Markdown Guides**: `famplus_report_file*.md`, `PROFESSOR_GUIDE.md`
+To keep the repository clean and secure, standard configuration and cache folders are excluded via `.gitignore`:
 *   **Environment Parameters**: `.env`, `.env.local`
 *   **Venvs**: Python Virtual Environments (`venv/`, `.venv/`)
 *   **Cached models & data**: `__pycache__/`, `.cache/`
