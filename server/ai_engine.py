@@ -124,7 +124,7 @@ else:
 # Groq is unavailable.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 groq_client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-GROQ_MODEL = "llama-3.1-8b-instant"
+GROQ_MODEL = "llama-3.3-70b-versatile"  # Benchmarked: 100% accuracy, ~0.62s avg on 6 medical cases
 GROQ_TIMEOUT = 18  # Maximum seconds to wait for LLM response
 
 
