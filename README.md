@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Tech Stack](https://img.shields.io/badge/Stack-MERN%20(React%2019%20+%20Express%205)%20+%20Python%20AI%20(FastAPI)-success)](./structure.md)
 
-Famplus is a premium, high-performance health platform engineered for proactive family wellness. By fusing a cutting-edge **MERN stack (React 19, Vite 8, Express 5, MongoDB 9)** with a specialized **Medical AI engine (FastAPI, SciSpacy, scikit-learn, Gemma-3)**, Famplus delivers diagnostic precision, real-time vitals intelligence, and professional-grade reporting in a stunning, high-fidelity interface.
+Famplus is a premium, high-performance health platform engineered for proactive family wellness. By fusing a cutting-edge **MERN stack (React 19, Vite 8, Express 5, MongoDB 9)** with a specialized **Medical AI engine (FastAPI, SciSpacy, scikit-learn, Llama 3.3)**, Famplus delivers diagnostic precision, real-time vitals intelligence, and professional-grade reporting in a stunning, high-fidelity interface.
 
 ---
 
@@ -34,7 +34,7 @@ Famplus is built on a **3-layer decoupled microservice architecture** to handle 
 │     DATABASE (MongoDB)    │         │     LAYER 3: AI ENGINE (Python)     │
 │  Collections:             │         │  FastAPI  •  SciSpacy NER           │
 │  - users                  │         │  HistGradientBoosting (ML)          │
-│  - familymembers          │         │  Gemma3 Cloud LLM (llama-3.1-8b)    │
+│  - familymembers          │         │  Groq Cloud LLM (llama-3.3-70b)     │
 │  - vitallogs              │         │  Joblib Model Serialization         │
 │  - symptomlogs            │         │  Emergency Hallmark Bypass Logic    │
 │  - familycircles          │         │  StandardScaler Vitals Normalization│
@@ -56,7 +56,7 @@ Famplus is a research-oriented health monitoring prototype designed to bridge th
 ### 🧠 Advanced AI Ecosystem
 *   **SciSpacy NLP Pipeline**: Utilizes an automated biomedical entity extraction pipeline (`en_core_sci_sm`) to parse symptoms and extract clinical entities directly from natural language.
 *   **Vitals-Contextual Diagnostics**: Uses a `HistGradientBoostingClassifier` trained on synthetic medical datasets to correlate user symptoms with real-time biometric indicators (Age, Heart Rate, Systolic/Diastolic Blood Pressure).
-*   **Groq Cloud LLM Integration**: Leverages Groq's high-speed API (`llama-3.1-8b-instant`) running structured JSON schemas to provide rapid, context-aware clinical reasoning and differential diagnoses.
+*   **Groq Cloud LLM Integration**: Leverages Groq's high-speed API (`llama-3.3-70b-versatile`) running structured JSON schemas to provide rapid, context-aware clinical reasoning and differential diagnoses.
 *   **Emergency Hallmark Override Safety Gate**: Built-in guardrails detect life-threatening symptoms (e.g. crushing chest pain, slurred speech) and bypass conservative model confidence gates to trigger immediate emergency alerts.
 *   **Clinical-Grade PDF Reports**: Generates professional, comprehensive project and diagnostic PDF reports (compiled via `ReportLab` locally or via `jsPDF` client-side).
 

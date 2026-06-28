@@ -2,7 +2,7 @@
 # 🏥 Famplus AI Inference Engine (v4.0 — Advanced Health Support Prototype)
 # ------------------------------------------------------------------------------
 # Author: Famplus Developer
-# Version: 4.0 (Vitals-Aware + SciSpacy NER + Gemma3 Reasoning)
+# Version: 4.0 (Vitals-Aware + SciSpacy NER + Llama 3.3 Reasoning)
 #
 # This microservice acts as the 'Cerebellum' of the Famplus ecosystem. It exposes
 # high-performance FastAPI endpoints for real-time symptom analysis and wellness
@@ -15,7 +15,7 @@
 #    provide objective evidence for the ML model.
 # 3. **Inference Core**: Histogram-based Gradient Boosting (XGBoost/HGB) classifier 
 #    that maps symptoms+vitals to specialist recommendations.
-# 4. **Clinical Reasoning**: Local Gemma3 LLM integration for deep contextual advice.
+# 4. **Clinical Reasoning**: Groq Llama 3.3 LLM integration for deep contextual advice.
 # 5. **Safety Guardrails**: Implements "General Physician First" logic and emergency 
 #    hallmark overrides to ensure user safety.
 #
@@ -2059,7 +2059,7 @@ async def predict_symptoms(request: SymptomRequest):
     3. Inject and normalize vitals (Age, HR, BP).
     4. Run Classifier (HGB/XGBoost).
     5. Apply Safety Overrides (Emergency hallmarks).
-    6. Parallel: Fetch deep reasoning from LLM (Gemma3).
+    6. Parallel: Fetch deep reasoning from LLM (Llama 3.3).
     7. Formulate and return S-Tier JSON response.
     """
     data = request

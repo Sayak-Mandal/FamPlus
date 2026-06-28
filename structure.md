@@ -28,7 +28,7 @@ Famplus/
 │   ├── public/             # Static Assets & 3D Models
 │   └── vite.config.ts      # Build configuration
 ├── server/                 # Python AI Clinical Inference Engine
-│   ├── ai_engine.py         # Advanced Inference Engine (SciSpacy + HGBDT + Gemma3)
+│   ├── ai_engine.py         # Advanced Inference Engine (SciSpacy + HGBDT + Groq Llama 3.3)
 │   ├── ai_architecture.md   # [DOCS] Technical Deep-Dive on AI Module
 │   ├── train_model.py       # ML Training Pipeline
 │   ├── model.joblib        # Trained Model Weights
@@ -64,7 +64,7 @@ A high-fidelity React application leveraging the latest web technologies:
 ### 3. `server/` (The Intelligence)
 A specialized Python microservice dedicated to clinical analysis:
 - **Medical NLP**: Powered by `SciSpacy` for high-precision entity extraction from symptoms.
-- **Clinical Reasoning**: Integrated with local `Gemma3` LLM for nuanced medical advice.
+- **Clinical Reasoning**: Integrated with Groq `Llama 3.3` LLM for nuanced medical advice.
 - **Vitals-Aware ML**: A `HistGradientBoosting` classifier that evaluates symptoms in the context of real-time age, heart rate, and blood pressure.
 - **Safety Overlays**: Implements Hallmark Symptom Bypass logic to ensure emergency signals are never suppressed.
 
@@ -76,5 +76,5 @@ A specialized Python microservice dedicated to clinical analysis:
 2. **Preprocessing**: The **Backend** (Node.js) attaches current user vitals (HR, BP) to the request.
 3. **NLP Analysis**: The **AI Engine** (FastAPI) extracts medical entities using SciSpacy.
 4. **Inference**: The ML model runs a vitals-aware classification to determine severity and specialty.
-5. **Enrichment**: Gemma3 provides additional clinical context and preventative advice.
+5. **Enrichment**: Llama 3.3 provides additional clinical context and preventative advice.
 6. **Delivery**: The result is returned to the UI with options for **In-App Previewing** or **PDF Report** download.
