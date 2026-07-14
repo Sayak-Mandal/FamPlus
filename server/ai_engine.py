@@ -789,68 +789,16 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'coughing blood':         'blood_in_sputum',
 
     # ── Toxic / Foreign Body Ingestion ──────────────────────────────────────
-    'ate a crayon':             'swallowed_foreign_object',
-    'ate a blue crayon':        'swallowed_foreign_object',
-    'swallowed a crayon':       'swallowed_foreign_object',
-    'ate a battery':            'ingested_toxic_substance',
-    'swallowed a battery':      'ingested_toxic_substance',
-    'drank bleach':             'ingested_toxic_substance',
-    'swallowed glass':          'swallowed_foreign_object',
-    'swallowed a glass':        'swallowed_foreign_object',
-    'ingested poison':          'ingested_toxic_substance',
-    'swallowed a coin':         'swallowed_foreign_object',
-    'ate something weird':      'swallowed_foreign_object',
-
-    # Magnets — genuinely dangerous (can attract across intestinal walls → perforation)
-    'swallowed a magnet':       'swallowed_foreign_object',
-    'swallowed magnet':         'swallowed_foreign_object',
-    'ate a magnet':             'swallowed_foreign_object',
-    'swallowed magnets':        'swallowed_foreign_object',
-    'ate magnets':              'swallowed_foreign_object',
-    'ingested a magnet':        'swallowed_foreign_object',
-
-    # Metal objects / hardware
-    'swallowed a screw':        'swallowed_foreign_object',
-    'ate a screw':              'swallowed_foreign_object',
-    'swallowed a nail':         'swallowed_foreign_object',
-    'ate a nail':               'swallowed_foreign_object',
-    'swallowed a pin':          'swallowed_foreign_object',
-    'ate a pin':                'swallowed_foreign_object',
-    'swallowed a needle':       'swallowed_foreign_object',
-    'ate a needle':             'swallowed_foreign_object',
-    'swallowed a bolt':         'swallowed_foreign_object',
-    'swallowed a staple':       'swallowed_foreign_object',
-    'swallowed metal':          'swallowed_foreign_object',
-    'swallowed a piece of metal': 'swallowed_foreign_object',
-
-    # Buttons / small objects
-    'swallowed a button':       'swallowed_foreign_object',
-    'ate a button':             'swallowed_foreign_object',
-    'swallowed a marble':       'swallowed_foreign_object',
-    'ate a marble':             'swallowed_foreign_object',
-    'swallowed a bead':         'swallowed_foreign_object',
-    'swallowed a toy':          'swallowed_foreign_object',
-
-    # Sharp objects / bones
-    'swallowed a bone':         'swallowed_foreign_object',
-    'swallowed a fish bone':    'swallowed_foreign_object',
-    'fishbone stuck':           'swallowed_foreign_object',
-    'swallowed a toothpick':    'swallowed_foreign_object',
-    'swallowed a razor':        'swallowed_foreign_object',
-
-    # Chemical / toxic
-    'swallowed bleach':         'ingested_toxic_substance',
-    'drank chemicals':          'ingested_toxic_substance',
-    'swallowed chemicals':      'ingested_toxic_substance',
-    'ingested bleach':          'ingested_toxic_substance',
-    'drank poison':             'ingested_toxic_substance',
-    'swallowed poison':         'ingested_toxic_substance',
-    'ate rat poison':           'ingested_toxic_substance',
-    'ate medication':           'ingested_toxic_substance',
-    'took too many pills':      'ingested_toxic_substance',
-    'overdose':                 'ingested_toxic_substance',
-    'drug overdose':            'ingested_toxic_substance',
-    'medicine overdose':        'ingested_toxic_substance',
+    'ate a crayon':           'swallowed_foreign_object',
+    'ate a blue crayon':      'swallowed_foreign_object',
+    'swallowed a crayon':     'swallowed_foreign_object',
+    'ate a battery':          'ingested_toxic_substance',
+    'swallowed a battery':    'ingested_toxic_substance',
+    'drank bleach':           'ingested_toxic_substance',
+    'swallowed glass':        'swallowed_foreign_object',
+    'ingested poison':        'ingested_toxic_substance',
+    'swallowed a coin':       'swallowed_foreign_object',
+    'ate something weird':    'swallowed_foreign_object',
 
     # ── Stomach / Digestive ──────────────────────────────────────────────────
     'nausea':                 'nausea',
@@ -1375,6 +1323,29 @@ def normalize_input(text: str, known_symptoms: List[str]) -> List[int]:
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     found: list[str] = []
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  LAYER 0: Dynamic Ingestion & Poisoning Detection (Generalized Regex)
+    #  Provides a robust catch-all safety net for swallowing non-food items
+    #  or ingesting toxic substances without exhaustively listing all nouns.
+    # ══════════════════════════════════════════════════════════════════════════
+    # 1. Swallowed Foreign Objects
+    ingestion_verbs = r"\b(swallow|swallowed|swallowing|choked\s+on|stuck\s+in\s+throat)\b"
+    if re.search(ingestion_verbs, cleaned):
+        food_excludes = r"\b(food|water|drink|saliva|spit|apple|banana|fruit|vegetable|meat|chicken|bread|rice|pasta|soup|gum|ice|pill|capsule|tablet|medicine|meds)\b"
+        has_bone = "bone" in cleaned
+        if not re.search(food_excludes, cleaned) or has_bone:
+            if 'swallowed_foreign_object' not in found:
+                found.append('swallowed_foreign_object')
+                print(f"  🧠 Dynamic NLP → detected foreign object ingestion from: '{cleaned}'")
+
+    # 2. Toxic Ingestions / Chemical Poisoning / Overdose
+    toxic_indicators = r"\b(bleach|chemical|poison|battery|batteries|detergent|acid|overdose|pills|medication|aspirin|tylenol|toxic|toxin|rat\s+poison|cleaner|shampoo|soap|detergent|glue|paint)\b"
+    ingest_verbs = r"\b(ate|drank|ingested|swallowed|took|swallowing|consumed|drinking|eating|overdosed)\b"
+    if re.search(ingest_verbs, cleaned) and re.search(toxic_indicators, cleaned):
+        if 'ingested_toxic_substance' not in found:
+            found.append('ingested_toxic_substance')
+            print(f"  🧠 Dynamic NLP → detected toxic ingestion from: '{cleaned}'")
 
     # ══════════════════════════════════════════════════════════════════════════
     #  LAYER 1: SciSpacy Medical Named Entity Recognition
