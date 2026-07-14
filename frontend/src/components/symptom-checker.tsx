@@ -26,7 +26,7 @@ import { useSpeechRecognition } from '@/hooks/use-speech-recognition'
  * Features:
  * - Multi-member selection for context-aware diagnosis.
  * - Real-time vitals freshness validation.
- * - Integrated health insights via Python AI Engine + Llama 3.3 LLM.
+ * - Integrated health insights via Python AI Engine + GPT OSS 120B LLM.
  * - Health report generation via jsPDF.
  * 
  * @component

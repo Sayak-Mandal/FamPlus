@@ -27,7 +27,7 @@ The engine utilizes a **Histogram-based Gradient Boosted Decision Tree (HGBDT) o
   - **Clinical Weighting**: High-severity conditions (e.g., Heart Attack, Paralysis, AIDS) are penalized by default to prevent false positives unless specific **Hallmark Symptoms** are detected.
 
 ### 4. Reasoning Layer (Cloud LLM via Groq)
-For deep contextual advice and medical summaries, the engine integrates with **Groq Cloud API** using the `llama-3.1-8b-instant` model.
+For deep contextual advice and medical summaries, the engine integrates with **Groq Cloud API** using the `openai/gpt-oss-120b` model.
 - **Grounding**: The LLM is provided with the ML model's prediction and the patient's vitals as "ground truth".
 - **Safety Overrides**: If Groq is unavailable or returns an error, the local ML predictions are used as a fallback.
 - **Output**: Generates human-readable clinical guidance, precautions, and specialist justification.
@@ -92,7 +92,7 @@ Since the AI engine is hosted on a Render Free Instance, it will spin down after
 - **Framework**: FastAPI (Python 3.10+)
 - **NLP**: Spacy / SciSpacy (`en_core_sci_sm`)
 - **ML**: Scikit-Learn (HistGradientBoosting), Joblib
-- **LLM API**: Groq SDK (`llama-3.1-8b-instant`)
+- **LLM API**: Groq SDK (`openai/gpt-oss-120b`)
 - **Data**: Pandas / NumPy
 
 ### Configuration Note:

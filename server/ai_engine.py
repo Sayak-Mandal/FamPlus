@@ -2,7 +2,7 @@
 # 🏥 Famplus AI Inference Engine (v4.0 — Advanced Health Support Prototype)
 # ------------------------------------------------------------------------------
 # Author: Famplus Developer
-# Version: 4.0 (Vitals-Aware + SciSpacy NER + Llama 3.3 Reasoning)
+# Version: 4.0 (Vitals-Aware + SciSpacy NER + GPT OSS 120B Reasoning)
 #
 # This microservice acts as the 'Cerebellum' of the Famplus ecosystem. It exposes
 # high-performance FastAPI endpoints for real-time symptom analysis and wellness
@@ -15,7 +15,7 @@
 #    provide objective evidence for the ML model.
 # 3. **Inference Core**: Histogram-based Gradient Boosting (XGBoost/HGB) classifier 
 #    that maps symptoms+vitals to specialist recommendations.
-# 4. **Clinical Reasoning**: Groq Llama 3.3 LLM integration for deep contextual advice.
+# 4. **Clinical Reasoning**: Groq GPT OSS 120B LLM integration for deep contextual advice.
 # 5. **Safety Guardrails**: Implements "General Physician First" logic and emergency 
 #    hallmark overrides to ensure user safety.
 #
@@ -120,12 +120,14 @@ else:
 
 # ── Groq LLM Configuration ──────────────────────────────────────────────────
 # Groq provides a cloud LLM API for superior clinical reasoning.
+# openai/gpt-oss-120b is hosted by Groq — most capable model, preferred for
+# a medical app where accuracy outweighs latency concerns.
 # The existing Gradient Boosting model serves as an automatic fallback when
 # Groq is unavailable.
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 groq_client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-GROQ_MODEL = "llama-3.3-70b-versatile"  # Benchmarked: 100% accuracy, ~0.62s avg on 6 medical cases
-GROQ_TIMEOUT = 18  # Maximum seconds to wait for LLM response
+GROQ_MODEL = "openai/gpt-oss-120b"  # Most capable model — served by Groq, prioritised for medical accuracy
+GROQ_TIMEOUT = 30  # Extended timeout (120b model may have higher latency)
 
 
 
@@ -1725,16 +1727,11 @@ def get_fallback_response(reason: str) -> SymptomResponse:
 #  Ollama LLM Clinical Reasoning Engine
 # ══════════════════════════════════════════════════════════════════════════════
 
-MEDICAL_SYSTEM_PROMPT = """You are a clinical decision support assistant.
-Analyze patient symptoms and vitals. Follow safety rules.
-SAFETY RULES:
-- Recommend consulting a physician.
-- Set urgency to "Emergency" for life-threatening symptoms.
-- Be conservative. Default to General Physician if unsure.
-- Specialists: Cardiologist, Neurologist, Pulmonologist, Gastroenterologist, Dermatologist, Rheumatologist, Endocrinologist, Infectious Disease Specialist, ENT Specialist, Urologist, Hepatologist, Allergist, Sleep Specialist, Vascular Surgeon, General Physician.
-- Urgencies: Emergency, High, Normal.
-- Keep text fields (advice, next_steps) to 1 short sentence max.
-Respond ONLY in the specified minified JSON format."""
+MEDICAL_SYSTEM_PROMPT = """Clinical decision support assistant. Analyze symptoms+vitals.
+RULES: Recommend a doctor. Set u=Emergency for life-threatening symptoms. Default specialist=General Physician.
+Specialists(use exact): Cardiologist,Neurologist,Pulmonologist,Gastroenterologist,Dermatologist,Rheumatologist,Endocrinologist,Infectious Disease Specialist,ENT Specialist,Urologist,Hepatologist,Allergist,Sleep Specialist,Vascular Surgeon,General Physician.
+Urgency values: Emergency|High|Normal. Keep a,d,n fields concise (1 sentence each).
+Respond ONLY as JSON:{"c":"Condition","f":85,"u":"Normal","a":"Advice","s":"Specialist","d":"Brief description","p":["precaution"],"t":[{"c":"AltDx","f":70}],"n":["next step"]}"""
 
 
 def find_local_disease_match(condition: str) -> Optional[str]:
@@ -1756,7 +1753,7 @@ def find_local_disease_match(condition: str) -> Optional[str]:
     return None
 
 def is_groq_available() -> bool:
-    """Checks if Groq is available and configured."""
+    """Checks if OpenAI is available and configured."""
     return groq_client is not None
 
 
@@ -1764,7 +1761,7 @@ def predict_with_groq(
     symptoms_text: str,
     vitals: Optional[VitalsContext] = None,
 ) -> Optional[SymptomResponse]:
-    """Calls the Groq LLM for clinical reasoning on symptoms.
+    """Calls the OpenAI LLM (gpt-oss-120b) for clinical reasoning on symptoms.
 
     Constructs a detailed prompt with symptom text and vitals context,
     then forces structured JSON output.
@@ -1780,41 +1777,25 @@ def predict_with_groq(
         return None
 
     try:
-        # ── Build user prompt with vitals context ─────────────────────────
-        user_msg = f"Patient reports: \"{symptoms_text}\""
+        # ── Build lean user message (schema is in system prompt) ─────────
+        user_msg = f'Symptoms: "{symptoms_text}"'
 
         if vitals:
             parts = []
             if vitals.age and vitals.age > 0:
-                parts.append(f"Age: {vitals.age} years")
+                parts.append(f"age={vitals.age}")
             if vitals.heart_rate and vitals.heart_rate > 0:
-                parts.append(f"Heart Rate: {vitals.heart_rate} bpm")
+                parts.append(f"hr={vitals.heart_rate}bpm")
             if vitals.blood_pressure:
-                parts.append(f"Blood Pressure: {vitals.blood_pressure} mmHg")
+                parts.append(f"bp={vitals.blood_pressure}")
             if vitals.sleep:
-                parts.append(f"Sleep: {vitals.sleep}")
+                parts.append(f"sleep={vitals.sleep}")
             if parts:
-                user_msg += "\n\nPatient Vitals:\n" + "\n".join(f"- {p}" for p in parts)
+                user_msg += " Vitals: " + ", ".join(parts) + "."
 
-        json_template = {
-            "c": "Condition",
-            "f": 90,
-            "u": "Emergency",
-            "a": "Advice",
-            "s": "Specialist",
-            "d": "Description",
-            "p": ["Precaution"],
-            "t": [{"c": "Diff Diagnosis", "f": 90}],
-            "n": ["Next Step"]
-        }
-        user_msg += (
-            "\nRespond ONLY as a JSON object matching this schema:\n"
-            + json.dumps(json_template)
-        )
+        print(f"🤖 Groq [{GROQ_MODEL}] symptoms='{symptoms_text}'")
 
-        print(f"🤖 Groq request: model={GROQ_MODEL}, symptoms='{symptoms_text}'")
-
-        # ── Call Groq with structured JSON output ──────────────────────
+        # ── Call OpenAI with structured JSON output ────────────────────
         resp = groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
@@ -1822,7 +1803,7 @@ def predict_with_groq(
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
-            max_tokens=500,
+            max_tokens=512,
             timeout=GROQ_TIMEOUT,
         )
 
@@ -2059,7 +2040,7 @@ async def predict_symptoms(request: SymptomRequest):
     3. Inject and normalize vitals (Age, HR, BP).
     4. Run Classifier (HGB/XGBoost).
     5. Apply Safety Overrides (Emergency hallmarks).
-    6. Parallel: Fetch deep reasoning from LLM (Llama 3.3).
+    6. Parallel: Fetch deep reasoning from LLM (GPT OSS 120B).
     7. Formulate and return S-Tier JSON response.
     """
     data = request

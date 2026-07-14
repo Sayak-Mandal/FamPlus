@@ -144,7 +144,7 @@ export default function LandingPage() {
                 <FeatureCard
                   icon={<Sparkles className="w-6 h-6 text-white" />}
                   title="Cloud AI Reasoning"
-                  desc="Powered by LLaMA and SciSpacy NLP, processing complex medical contexts instantly."
+                  desc="Powered by GPT OSS 120B and SciSpacy NLP, processing complex medical contexts instantly."
                   highlight={true}
                 />
                 <FeatureCard
