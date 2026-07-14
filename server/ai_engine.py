@@ -491,9 +491,9 @@ class GroqMinifiedDiagnosis(BaseModel):
     a:    str
     s:    str
     d:    str
-    p:    List[str]
-    t:    List[GroqMinifiedTopMatch]
-    n:    List[str]
+    p:    List[str] = []
+    t:    List[GroqMinifiedTopMatch] = []
+    n:    List[str] = []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
