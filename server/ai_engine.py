@@ -789,16 +789,68 @@ SYMPTOM_ALIASES: Dict[str, str] = {
     'coughing blood':         'blood_in_sputum',
 
     # ── Toxic / Foreign Body Ingestion ──────────────────────────────────────
-    'ate a crayon':           'swallowed_foreign_object',
-    'ate a blue crayon':      'swallowed_foreign_object',
-    'swallowed a crayon':     'swallowed_foreign_object',
-    'ate a battery':          'ingested_toxic_substance',
-    'swallowed a battery':    'ingested_toxic_substance',
-    'drank bleach':           'ingested_toxic_substance',
-    'swallowed glass':        'swallowed_foreign_object',
-    'ingested poison':        'ingested_toxic_substance',
-    'swallowed a coin':       'swallowed_foreign_object',
-    'ate something weird':    'swallowed_foreign_object',
+    'ate a crayon':             'swallowed_foreign_object',
+    'ate a blue crayon':        'swallowed_foreign_object',
+    'swallowed a crayon':       'swallowed_foreign_object',
+    'ate a battery':            'ingested_toxic_substance',
+    'swallowed a battery':      'ingested_toxic_substance',
+    'drank bleach':             'ingested_toxic_substance',
+    'swallowed glass':          'swallowed_foreign_object',
+    'swallowed a glass':        'swallowed_foreign_object',
+    'ingested poison':          'ingested_toxic_substance',
+    'swallowed a coin':         'swallowed_foreign_object',
+    'ate something weird':      'swallowed_foreign_object',
+
+    # Magnets — genuinely dangerous (can attract across intestinal walls → perforation)
+    'swallowed a magnet':       'swallowed_foreign_object',
+    'swallowed magnet':         'swallowed_foreign_object',
+    'ate a magnet':             'swallowed_foreign_object',
+    'swallowed magnets':        'swallowed_foreign_object',
+    'ate magnets':              'swallowed_foreign_object',
+    'ingested a magnet':        'swallowed_foreign_object',
+
+    # Metal objects / hardware
+    'swallowed a screw':        'swallowed_foreign_object',
+    'ate a screw':              'swallowed_foreign_object',
+    'swallowed a nail':         'swallowed_foreign_object',
+    'ate a nail':               'swallowed_foreign_object',
+    'swallowed a pin':          'swallowed_foreign_object',
+    'ate a pin':                'swallowed_foreign_object',
+    'swallowed a needle':       'swallowed_foreign_object',
+    'ate a needle':             'swallowed_foreign_object',
+    'swallowed a bolt':         'swallowed_foreign_object',
+    'swallowed a staple':       'swallowed_foreign_object',
+    'swallowed metal':          'swallowed_foreign_object',
+    'swallowed a piece of metal': 'swallowed_foreign_object',
+
+    # Buttons / small objects
+    'swallowed a button':       'swallowed_foreign_object',
+    'ate a button':             'swallowed_foreign_object',
+    'swallowed a marble':       'swallowed_foreign_object',
+    'ate a marble':             'swallowed_foreign_object',
+    'swallowed a bead':         'swallowed_foreign_object',
+    'swallowed a toy':          'swallowed_foreign_object',
+
+    # Sharp objects / bones
+    'swallowed a bone':         'swallowed_foreign_object',
+    'swallowed a fish bone':    'swallowed_foreign_object',
+    'fishbone stuck':           'swallowed_foreign_object',
+    'swallowed a toothpick':    'swallowed_foreign_object',
+    'swallowed a razor':        'swallowed_foreign_object',
+
+    # Chemical / toxic
+    'swallowed bleach':         'ingested_toxic_substance',
+    'drank chemicals':          'ingested_toxic_substance',
+    'swallowed chemicals':      'ingested_toxic_substance',
+    'ingested bleach':          'ingested_toxic_substance',
+    'drank poison':             'ingested_toxic_substance',
+    'swallowed poison':         'ingested_toxic_substance',
+    'ate rat poison':           'ingested_toxic_substance',
+    'ate medication':           'ingested_toxic_substance',
+    'took too many pills':      'ingested_toxic_substance',
+    'overdose':                 'ingested_toxic_substance',
+    'drug overdose':            'ingested_toxic_substance',
+    'medicine overdose':        'ingested_toxic_substance',
 
     # ── Stomach / Digestive ──────────────────────────────────────────────────
     'nausea':                 'nausea',
@@ -1365,7 +1417,8 @@ def normalize_input(text: str, known_symptoms: List[str]) -> List[int]:
     #  LAYER 2: SYMPTOM_ALIASES Phrase Matching (n-gram window)
     #  Runs regardless of SciSpacy results to catch aliases the NER missed.
     # ══════════════════════════════════════════════════════════════════════════
-    tokens = cleaned.split()
+    # Strip commas/semicolons that may be attached to tokens (e.g. "magnets,")
+    tokens = [t.strip(",;") for t in cleaned.split() if t.strip(",;")]
     used_indices: set = set()
 
     for window in (5, 4, 3, 2):
@@ -2218,7 +2271,10 @@ async def predict_symptoms(request: SymptomRequest):
     if emergency_override:
         override_disease    = emergency_override['disease']
         override_confidence = emergency_override['confidence']
-        specialist = metadata['specialist_map'].get(override_disease, FALLBACK_SPECIALIST)
+        # Prefer the custom specialist defined in EMERGENCY_OVERRIDES (e.g. 'Emergency Physician / Toxicology')
+        # over the generic specialist_map lookup from training data (which may not know this disease at all).
+        override_config = EMERGENCY_OVERRIDES.get(override_disease, {})
+        specialist = override_config.get('specialist') or metadata['specialist_map'].get(override_disease, FALLBACK_SPECIALIST)
 
         # Format markers for readability
         formatted_markers = [marker.replace('_', ' ') for marker in emergency_override['matched_markers'][:3]]
