@@ -2,6 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Tech Stack](https://img.shields.io/badge/Stack-MERN%20(React%2019%20+%20Express%205)%20+%20Python%20AI%20(FastAPI)-success)](./structure.md)
+[![Live Demo](https://img.shields.io/badge/Demo-fam--plus.vercel.app-emerald?style=flat-square&logo=vercel)](https://fam-plus.vercel.app/)
 
 Famplus is a premium, high-performance health platform engineered for proactive family wellness. By fusing a cutting-edge **MERN stack (React 19, Vite 8, Express 5, MongoDB 9)** with a specialized **Medical AI engine (FastAPI, SciSpacy, scikit-learn, GPT OSS 120B)**, Famplus delivers diagnostic precision, real-time vitals intelligence, and professional-grade reporting in a stunning, high-fidelity interface.
 
